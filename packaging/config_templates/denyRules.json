@@ -1,1 +1,42 @@
-[]
+[
+  {
+    "id": "protect-desktop",
+    "path": "%USERPROFILE%\\Desktop",
+    "scopeHint": "windows",
+    "enabled": true,
+    "reason": "Desktop is user-visible content and is never a cleanup target by default.",
+    "source": "user"
+  },
+  {
+    "id": "protect-documents",
+    "path": "%USERPROFILE%\\Documents",
+    "scopeHint": "windows",
+    "enabled": true,
+    "reason": "Documents are protected by default.",
+    "source": "user"
+  },
+  {
+    "id": "protect-downloads",
+    "path": "%USERPROFILE%\\Downloads",
+    "scopeHint": "windows",
+    "enabled": true,
+    "reason": "Downloads are protected by default.",
+    "source": "user"
+  },
+  {
+    "id": "protect-pictures",
+    "path": "%USERPROFILE%\\Pictures",
+    "scopeHint": "windows",
+    "enabled": true,
+    "reason": "Pictures are protected by default.",
+    "source": "user"
+  },
+  {
+    "id": "protect-videos",
+    "path": "%USERPROFILE%\\Videos",
+    "scopeHint": "windows",
+    "enabled": true,
+    "reason": "Videos are protected by default.",
+    "source": "user"
+  }
+]

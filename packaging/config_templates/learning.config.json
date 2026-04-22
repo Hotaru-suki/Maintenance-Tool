@@ -1,18 +1,19 @@
 {
   "newItemPolicy": {
-    "minBytes": 1,
+    "minBytes": 1048576,
     "promoteNewPaths": true
   },
   "changePolicy": {
-    "sizeDeltaBytes": 1048576,
-    "sizeDeltaRatio": 0.25
+    "sizeDeltaBytes": 33554432,
+    "sizeDeltaRatio": 0.5
   },
   "stalePolicy": {
-    "missingCountThreshold": 2,
+    "missingCountThreshold": 3,
     "suggestOnly": true
   },
   "groupingPolicy": {
     "groupBy": [
+      "category",
       "scope"
     ]
   },
@@ -20,8 +21,19 @@
     "refuseSymlinks": true,
     "requireManualConfirmForLearnedTargets": true,
     "requireManualConfirmAboveBytes": 536870912,
-    "maxItemsPerRun": 100,
-    "maxBytesPerRun": 10737418240,
-    "allowedRoots": []
+    "maxItemsPerRun": 50,
+    "maxBytesPerRun": 2147483648,
+    "allowedRoots": [
+      {
+        "path": "%LOCALAPPDATA%",
+        "scopeHint": "windows",
+        "enabled": true
+      },
+      {
+        "path": "%APPDATA%\\Code",
+        "scopeHint": "windows",
+        "enabled": true
+      }
+    ]
   }
 }

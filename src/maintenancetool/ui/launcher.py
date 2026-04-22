@@ -33,6 +33,7 @@ from maintenancetool.ui.launcher_views import (
 )
 from maintenancetool.ui.menu import _run_review_pending_menu
 from maintenancetool.ui.workflow_guidance import (
+    NextStepSpec,
     advanced_dryrun_next_step,
     advanced_quarantine_next_step,
     analyze_next_step,
@@ -84,6 +85,8 @@ def run_launcher(console: Console, *, config_dir: str, state_dir: str, report_di
             query="/",
             advanced_enabled=context.advanced_enabled,
         ),
+        state_path=context.state_path,
+        report_dir=context.report_dir,
         update_status=update_status,
     )
     if supports_prompt_toolkit_launcher():
@@ -92,7 +95,7 @@ def run_launcher(console: Console, *, config_dir: str, state_dir: str, report_di
             return
 
     while True:
-        query = typer.prompt("launcher", default="/", show_default=False).strip() or "/"
+        query = typer.prompt(">", default="/", show_default=False).strip() or "/"
         if query == "/":
             _render_command_matches(context, commands=commands, query=query)
             continue
@@ -106,7 +109,7 @@ def run_launcher(console: Console, *, config_dir: str, state_dir: str, report_di
 
         matches = filter_launcher_commands(commands, query, advanced_enabled=context.advanced_enabled)
         if not matches:
-            context.console.print("[yellow]No matching commands in current mode.[/yellow]")
+            context.console.print("[yellow]no matching commands in current mode[/yellow]")
             continue
         _render_command_matches(context, commands=matches, query=query)
 
@@ -127,7 +130,7 @@ def build_launcher_commands() -> list[LauncherCommand]:
         LauncherCommand("/analyze", "Run analyze and build pending learning suggestions", _handle_analyze, aliases=("/a", "/an"), details="Scans discover roots, applies hit rules, updates snapshot state, and writes pending learning suggestions.", recommended_next="/review", affects=("state/lastSnapshot.json", "state/pending.json")),
         LauncherCommand("/review", "Review pending learning suggestions", _handle_review, aliases=("/r", "/rev"), details="Accepts or rejects pending learning suggestions and updates learned targets and learning decision history.", recommended_next="/dryrun", affects=("config/fixedTargets.json", "state/pending.json", "state/learningDecisions.json")),
         LauncherCommand("/dryrun", "Preview cleanup candidates without deleting anything", _handle_dryrun, aliases=("/d", "/dr"), details="Builds a cleanup plan only. No files are removed or moved.", recommended_next="/delete-safe", affects=("reports/cleanup-plan-dry-run.json",)),
-        LauncherCommand("/delete-safe", "Delete low-risk allowed cleanup targets", _handle_delete_safe, aliases=("/del", "/ds"), details="Shows low-risk cleanup candidates that are already allowed by the safety model.", recommended_next="/report", affects=("reports/cleanup-plan-dry-run.json",)),
+        LauncherCommand("/delete-safe", "Delete low-risk allowed cleanup targets", _handle_delete_safe, aliases=("/del", "/ds"), details="Reviews low-risk allowed candidates and executes a confirmed delete pass for them.", recommended_next="/report", affects=("reports/cleanup-plan-dry-run.json", "reports/cleanup-execution-delete.json")),
         LauncherCommand("/restore", "Restore items from quarantine", _handle_restore, aliases=("/res", "/restore-quarantine"), details="Lists active quarantine records and lets you restore protected payloads back to their source paths.", recommended_next="/report", affects=("reports/restore-execution.json", ".quarantine")),
         LauncherCommand("/check-update", "Check GitHub release updates", _handle_check_update, aliases=("/update", "/cu"), details="Refreshes release metadata from GitHub and opens the latest installer page when a newer version exists.", recommended_next="/report", affects=("state/update-state.json",)),
         LauncherCommand("/report", "Show report, state, and quarantine locations", _handle_report, aliases=("/rep",), details="Prints the active runtime folders so you can inspect generated state, reports, and quarantine data directly.", affects=("config", "state", "reports", ".quarantine")),
@@ -234,21 +237,21 @@ def _run_prompt_toolkit_launcher(context: LauncherContext, commands: list[Launch
     def toolbar_text() -> HTML:
         matches = current_matches()
         if not matches:
-            return HTML("<style fg='ansiyellow'>No matching commands in current mode.</style>")
+            return HTML("<style fg='ansiyellow'>no matching commands in current mode</style>")
         lines: list[str] = []
         for index, command in enumerate(matches[:8]):
             prefix = "&gt;" if index == state["selected_index"] else " "
             lines.append(f"{prefix} <b>{command.name}</b>  {command.description}")
         selected = matches[min(state["selected_index"], len(matches[:8]) - 1)]
         lines.append(
-            f"<style fg='ansicyan'>Selected: {selected.name}</style> "
-            f"<style fg='ansibrightblack'>| Next: {selected.recommended_next or '-'} "
-            f"| Aliases: {', '.join(selected.aliases) if selected.aliases else '-'} "
-            f"| Affects: {', '.join(selected.affects) if selected.affects else 'read-only'}</style>"
+            f"<style fg='ansicyan'>selected: {selected.name}</style> "
+            f"<style fg='ansibrightblack'>| next: {selected.recommended_next or '-'} "
+            f"| aliases: {', '.join(selected.aliases) if selected.aliases else '-'} "
+            f"| affects: {', '.join(selected.affects) if selected.affects else 'read-only'}</style>"
         )
         if selected.details:
             lines.append(f"<style fg='ansibrightblack'>{selected.details}</style>")
-        lines.append("<style fg='ansibrightblack'>Use / to open commands, type to filter, arrows to select, Enter to run.</style>")
+        lines.append("<style fg='ansibrightblack'>type / to list commands, arrows to move, enter to run</style>")
         return HTML("\n".join(lines))
 
     bindings = KeyBindings()
@@ -282,7 +285,7 @@ def _run_prompt_toolkit_launcher(context: LauncherContext, commands: list[Launch
         event.app.exit(result=selected.name)
 
     session = PromptSession(
-        message=HTML("<b><ansicyan>launcher</ansicyan></b> "),
+        message=HTML("<b><ansicyan>&gt;</ansicyan></b> "),
         key_bindings=bindings,
         bottom_toolbar=toolbar_text,
     )
@@ -291,7 +294,7 @@ def _run_prompt_toolkit_launcher(context: LauncherContext, commands: list[Launch
         try:
             text = session.prompt(default="/")
         except (EOFError, KeyboardInterrupt):
-            context.console.print("[yellow]Exiting MaintenanceTool.[/yellow]")
+            context.console.print("[yellow]exiting MaintenanceTool[/yellow]")
             return True
 
         query = state["submitted"] or text.strip() or "/"
@@ -311,7 +314,7 @@ def _run_prompt_toolkit_launcher(context: LauncherContext, commands: list[Launch
 
         matches = filter_launcher_commands(commands, query, advanced_enabled=context.advanced_enabled)
         if not matches:
-            context.console.print("[yellow]No matching commands in current mode.[/yellow]")
+            context.console.print("[yellow]no matching commands in current mode[/yellow]")
             continue
         _render_command_matches(context, commands=matches, query=query)
 
@@ -351,14 +354,7 @@ def _handle_status(context: LauncherContext) -> bool:
         has_pending=pending_state is not None and pending_state.summary.totalSuggestions > 0,
         has_learning=learning_state is not None and learning_state.summary.totalDecisions > 0,
     )
-    render_post_action_hint(
-        context.console,
-        primary=next_step.primary,
-        aliases=next_step.aliases,
-        note=next_step.note,
-        alternate=next_step.alternate,
-        alternate_aliases=next_step.alternate_aliases,
-    )
+    _render_next_step(context, next_step)
     return True
 
 
@@ -377,35 +373,11 @@ def _handle_analyze(context: LauncherContext) -> bool:
     if result.suggestions:
         if prompt_yes_no(f"Review {len(result.suggestions)} pending learning suggestion(s) now?"):
             _run_review_pending_menu(context.console, config_path=context.config_path, state_path=context.state_path)
-            next_step = analyze_next_step(has_suggestions=True, reviewed_now=True)
-            render_post_action_hint(
-                context.console,
-                primary=next_step.primary,
-                aliases=next_step.aliases,
-                note=next_step.note,
-                alternate=next_step.alternate,
-                alternate_aliases=next_step.alternate_aliases,
-            )
+            _render_next_step(context, analyze_next_step(has_suggestions=True, reviewed_now=True))
             return True
-        next_step = analyze_next_step(has_suggestions=True, reviewed_now=False)
-        render_post_action_hint(
-            context.console,
-            primary=next_step.primary,
-            aliases=next_step.aliases,
-            note=next_step.note,
-            alternate=next_step.alternate,
-            alternate_aliases=next_step.alternate_aliases,
-        )
+        _render_next_step(context, analyze_next_step(has_suggestions=True, reviewed_now=False))
         return True
-    next_step = analyze_next_step(has_suggestions=False, reviewed_now=False)
-    render_post_action_hint(
-        context.console,
-        primary=next_step.primary,
-        aliases=next_step.aliases,
-        note=next_step.note,
-        alternate=next_step.alternate,
-        alternate_aliases=next_step.alternate_aliases,
-    )
+    _render_next_step(context, analyze_next_step(has_suggestions=False, reviewed_now=False))
     return True
 
 
@@ -438,19 +410,12 @@ def _handle_dryrun(context: LauncherContext) -> bool:
         has_safe_candidates=bool(safe_items),
         has_any_candidates=bool(result.plan.items),
     )
-    render_post_action_hint(
-        context.console,
-        primary=next_step.primary,
-        aliases=next_step.aliases,
-        note=next_step.note,
-        alternate=next_step.alternate,
-        alternate_aliases=next_step.alternate_aliases,
-    )
+    _render_next_step(context, next_step)
     return True
 
 
 def _handle_delete_safe(context: LauncherContext) -> bool:
-    result = run_cleanup_service(
+    preview_result = run_cleanup_service(
         config_path=context.config_path,
         report_dir=context.report_dir,
         quarantine_dir=context.quarantine_dir,
@@ -459,7 +424,7 @@ def _handle_delete_safe(context: LauncherContext) -> bool:
         local_path_resolver=resolve_local_path,
     )
     safe_items = [
-        item for item in result.plan.items
+        item for item in preview_result.plan.items
         if item.allowed and item.riskLevel == "low" and not item.requiresManualConfirm
     ]
     context.console.print(
@@ -467,28 +432,61 @@ def _handle_delete_safe(context: LauncherContext) -> bool:
             "Delete Safe",
             [
                 ("safe_delete_candidates", len(safe_items)),
-                ("report_path", str(result.report_path)),
+                ("report_path", str(preview_result.report_path)),
             ],
             border_style="green",
         )
     )
     if safe_items:
-        safe_table = Table(title="Safe Delete Candidates")
-        safe_table.add_column("Path")
-        safe_table.add_column("Bytes")
-        safe_table.add_column("Category")
+        context.console.print("safe_delete_candidates")
         for item in safe_items[:8]:
-            safe_table.add_row(item.path, str(item.sizeBytes), item.category or "-")
-        context.console.print(safe_table)
-    next_step = delete_safe_next_step(has_safe_candidates=bool(safe_items))
-    render_post_action_hint(
-        context.console,
-        primary=next_step.primary,
-        aliases=next_step.aliases,
-        note=next_step.note,
-        alternate=next_step.alternate,
-        alternate_aliases=next_step.alternate_aliases,
-    )
+            context.console.print(
+                f"- {item.path} | bytes={item.sizeBytes} | category={item.category or '-'}"
+            )
+        total_bytes = sum(item.sizeBytes for item in safe_items)
+        if prompt_yes_no(
+            f"Proceed with safe delete for {len(safe_items)} target(s), total {total_bytes} bytes?"
+        ):
+            execution_result = run_cleanup_service(
+                config_path=context.config_path,
+                report_dir=context.report_dir,
+                quarantine_dir=context.quarantine_dir,
+                mode="delete",
+                apply=True,
+                delete_confirmation="DELETE",
+                confirmed_target_ids={item.targetId for item in safe_items},
+                local_path_resolver=resolve_local_path,
+            )
+            applied_items = [
+                item for item in (execution_result.execution.items if execution_result.execution is not None else [])
+                if item.outcome == "applied"
+            ]
+            skipped_items = [
+                item for item in (execution_result.execution.items if execution_result.execution is not None else [])
+                if item.outcome == "skipped"
+            ]
+            context.console.print(
+                build_key_value_panel(
+                    "Delete Safe Execution",
+                    [
+                        ("applied_items", len(applied_items)),
+                        ("skipped_items", len(skipped_items)),
+                        ("plan_report_path", str(execution_result.report_path)),
+                        (
+                            "execution_report_path",
+                            str(execution_result.execution_report_path)
+                            if execution_result.execution_report_path is not None
+                            else "-",
+                        ),
+                    ],
+                    border_style="green",
+                )
+            )
+            for item in applied_items[:8]:
+                context.console.print(f"- deleted: {item.path}")
+        else:
+            context.console.print("[yellow]safe delete cancelled[/yellow]")
+    _render_next_step(context, delete_safe_next_step(has_safe_candidates=bool(safe_items)))
     return True
 
 
@@ -519,15 +517,7 @@ def _handle_restore(context: LauncherContext) -> bool:
         for record in preview.records[:8]:
             restore_table.add_row(record.recordId, record.sourcePath, str(record.sizeBytes))
         context.console.print(restore_table)
-    next_step = restore_next_step(has_records=bool(preview.records))
-    render_post_action_hint(
-        context.console,
-        primary=next_step.primary,
-        aliases=next_step.aliases,
-        note=next_step.note,
-        alternate=next_step.alternate,
-        alternate_aliases=next_step.alternate_aliases,
-    )
+    _render_next_step(context, restore_next_step(has_records=bool(preview.records)))
     return True
 
 
@@ -654,16 +644,11 @@ def _handle_advanced_dryrun(context: LauncherContext) -> bool:
         local_path_resolver=resolve_local_path,
     )
     render_cleanup_plan_summary(context.console, title="Advanced Dry-run", result=result)
-    next_step = advanced_dryrun_next_step(
-        has_allowed_candidates=any(item.allowed for item in result.plan.items),
-    )
-    render_post_action_hint(
-        context.console,
-        primary=next_step.primary,
-        aliases=next_step.aliases,
-        note=next_step.note,
-        alternate=next_step.alternate,
-        alternate_aliases=next_step.alternate_aliases,
+    _render_next_step(
+        context,
+        advanced_dryrun_next_step(
+            has_allowed_candidates=any(item.allowed for item in result.plan.items),
+        ),
     )
     return True
 
@@ -678,20 +663,26 @@ def _handle_advanced_quarantine(context: LauncherContext) -> bool:
         local_path_resolver=resolve_local_path,
     )
     render_cleanup_plan_summary(context.console, title="Advanced Quarantine Preview", result=result)
-    next_step = advanced_quarantine_next_step(
-        has_allowed_candidates=any(item.allowed for item in result.plan.items),
-    )
-    render_post_action_hint(
-        context.console,
-        primary=next_step.primary,
-        aliases=next_step.aliases,
-        note=next_step.note,
-        alternate=next_step.alternate,
-        alternate_aliases=next_step.alternate_aliases,
+    _render_next_step(
+        context,
+        advanced_quarantine_next_step(
+            has_allowed_candidates=any(item.allowed for item in result.plan.items),
+        ),
     )
     return True
 
 
 def _handle_exit(context: LauncherContext) -> bool:
-    context.console.print("[yellow]Exiting MaintenanceTool.[/yellow]")
+    context.console.print("[yellow]exiting MaintenanceTool[/yellow]")
     return False
+
+
+def _render_next_step(context: LauncherContext, spec: NextStepSpec) -> None:
+    render_post_action_hint(
+        context.console,
+        primary=spec.primary,
+        aliases=spec.aliases,
+        note=spec.note,
+        alternate=spec.alternate,
+        alternate_aliases=spec.alternate_aliases,
+    )

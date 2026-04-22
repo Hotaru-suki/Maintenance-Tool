@@ -1,24 +1,37 @@
 from __future__ import annotations
 
-from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 
 import typer
 from rich.console import Console
-from rich.table import Table
 
-from maintenancetool.core.discovery_roots import discover_root_summary
 from maintenancetool.core.path_adapter import resolve_local_path
 from maintenancetool.services.analyze import run_analyze_service
 from maintenancetool.services.cleanup import run_cleanup_service
 from maintenancetool.services.feedback import dispatch_feedback, run_feedback_service
 from maintenancetool.services.quarantine import run_restore_quarantine_service
 from maintenancetool.services.review import run_review_pending_service
-from maintenancetool.services.results import CleanupServiceResult
 from maintenancetool.services.update import get_update_status, open_update_download
 from maintenancetool.ui.admin import is_admin_session
 from maintenancetool.ui.confirm import prompt_yes_no
+from maintenancetool.ui.menu_views import (
+    render_analyze_summary,
+    render_cleanup_candidates,
+    render_execution_summary,
+    render_main_menu,
+    render_pending_review,
+    render_plan_preview,
+    render_restore_records,
+)
 from maintenancetool.ui.selection import parse_selection
+
+
+@dataclass(frozen=True, slots=True)
+class CleanupSelection:
+    target_ids: set[str]
+    total_bytes: int
+    selected_count: int
 
 
 def run_menu(console: Console, *, config_dir: str, state_dir: str, report_dir: str, quarantine_dir: str) -> None:
@@ -44,7 +57,7 @@ def run_menu(console: Console, *, config_dir: str, state_dir: str, report_dir: s
                     local_path_resolver=resolve_local_path,
                 )
             console.print("[green]Analyze complete.[/green]")
-            _render_analyze_summary(console, result=result)
+            render_analyze_summary(console, result=result)
             if not result.entries and not result.suggestions:
                 guidance = (
                     "No scan results were produced. Discover roots are available, but no candidate matched the built-in hit rules."
@@ -124,20 +137,7 @@ def run_menu(console: Console, *, config_dir: str, state_dir: str, report_dir: s
 
 
 def _prompt_main_menu(console: Console, *, show_advanced: bool, update_status) -> str:
-    console.print("\n[bold cyan]MaintenanceTool[/bold cyan]")
-    if update_status.update_available and update_status.latest_version is not None:
-        console.print(f"[magenta]Update available: v{update_status.latest_version}[/magenta]")
-    console.print("1. Analyze")
-    console.print("2. Review Pending")
-    console.print("3. Dry Run")
-    console.print("4. Delete Safe")
-    console.print("5. Restore From Quarantine")
-    console.print("6. View Reports")
-    console.print("7. Check Updates")
-    console.print("8. Send Feedback")
-    if show_advanced:
-        console.print("9. Advanced")
-    console.print("0. Exit")
+    render_main_menu(console, show_advanced=show_advanced, update_status=update_status)
     return typer.prompt("Select").strip()
 
 
@@ -171,69 +171,31 @@ def _run_review_pending_menu(console: Console, *, config_path: Path, state_path:
         console.print("[yellow]No pending suggestions to review.[/yellow]")
         return
 
-    console.print(f"pending review items={len(pending_state.suggestions)}")
-    console.print("fields=Action | Category | Hit Rule | Rule Reason | Bytes | Source | Path | Reason")
-    first_item = pending_state.suggestions[0]
-    console.print(
-        "first item: "
-        f"path={first_item.path} "
-        f"category={first_item.category or '-'} "
-        f"bytes={first_item.sizeBytes if first_item.sizeBytes is not None else '-'} "
-        f"source={first_item.derivedFrom or '-'} "
-        f"hit_rule={first_item.hitRule or '-'}"
-    )
-    table = Table(title="Pending Suggestions")
-    table.add_column("#")
-    table.add_column("Action")
-    table.add_column("Category")
-    table.add_column("Hit Rule")
-    table.add_column("Rule Reason")
-    table.add_column("Bytes")
-    table.add_column("Source")
-    table.add_column("Path")
-    table.add_column("Reason")
-    for index, item in enumerate(pending_state.suggestions, start=1):
-        table.add_row(
-            str(index),
-            item.suggestedAction,
-            item.category or "-",
-            item.hitRule or "-",
-            item.hitRuleReason or "-",
-            str(item.sizeBytes) if item.sizeBytes is not None else "-",
-            item.derivedFrom or "-",
-            item.path,
-            item.reason,
-        )
-    console.print(table)
+    render_pending_review(console, pending_state=pending_state)
 
-    while True:
-        raw = typer.prompt("Select items to accept (a, 1,3, 2-4, n, q)").strip()
-        try:
-            selected = parse_selection(raw, len(pending_state.suggestions))
-        except ValueError as exc:
-            if str(exc) == "cancelled":
-                console.print("[yellow]Review cancelled.[/yellow]")
-                return
-            console.print(f"[red]{exc}[/red]")
-            continue
-        break
+    selected = _prompt_index_selection(
+        console,
+        prompt_text="Select items to accept (a, 1,3, 2-4, n, q)",
+        total_items=len(pending_state.suggestions),
+        cancelled_message="Review cancelled.",
+    )
+    if selected is None:
+        return
 
     accept_ids = {
         pending_state.suggestions[index - 1].id
         for index in sorted(selected)
     }
 
-    while True:
-        raw_reject = typer.prompt("Select items to reject (n, 1,3, 2-4, q)", default="n").strip()
-        try:
-            rejected_selection = parse_selection(raw_reject, len(pending_state.suggestions))
-        except ValueError as exc:
-            if str(exc) == "cancelled":
-                console.print("[yellow]Review cancelled.[/yellow]")
-                return
-            console.print(f"[red]{exc}[/red]")
-            continue
-        break
+    rejected_selection = _prompt_index_selection(
+        console,
+        prompt_text="Select items to reject (n, 1,3, 2-4, q)",
+        total_items=len(pending_state.suggestions),
+        cancelled_message="Review cancelled.",
+        default="n",
+    )
+    if rejected_selection is None:
+        return
 
     reject_ids = {
         pending_state.suggestions[index - 1].id
@@ -281,43 +243,28 @@ def _run_cleanup_menu(
         console.print("[yellow]No eligible targets.[/yellow]")
         return
 
-    table = Table(title=f"{'Delete Safe' if safe_only else mode.capitalize()} Candidates")
-    table.add_column("#")
-    table.add_column("Path")
-    table.add_column("Bytes")
-    table.add_column("Risk")
-    for index, item in enumerate(candidates, start=1):
-        table.add_row(str(index), item.path, str(item.sizeBytes), item.riskLevel)
-    console.print(table)
+    render_cleanup_candidates(
+        console,
+        title=f"{'Delete Safe' if safe_only else mode.capitalize()} Candidates",
+        candidates=candidates,
+    )
 
-    while True:
-        raw = typer.prompt("Select items (a, 1,3, 2-4, n, q)").strip()
-        try:
-            selected = parse_selection(raw, len(candidates))
-        except ValueError as exc:
-            if str(exc) == "cancelled":
-                console.print("[yellow]Cleanup cancelled.[/yellow]")
-                return
-            console.print(f"[red]{exc}[/red]")
-            continue
-        break
-
-    if not selected:
-        console.print("[yellow]No targets selected.[/yellow]")
+    selection = _prompt_cleanup_selection(console, candidates=candidates)
+    if selection is None:
         return
 
-    selected_ids = {candidates[index - 1].targetId for index in sorted(selected)}
-    total_bytes = sum(candidates[index - 1].sizeBytes for index in sorted(selected))
-    if not prompt_yes_no(f"Proceed with {mode if not safe_only else 'safe delete'} for {len(selected_ids)} target(s), total {total_bytes} bytes?"):
+    if not prompt_yes_no(
+        f"Proceed with {mode if not safe_only else 'safe delete'} for {selection.selected_count} target(s), total {selection.total_bytes} bytes?"
+    ):
         console.print("[yellow]Cleanup cancelled.[/yellow]")
         return
 
     if mode == "dry-run" and not safe_only:
-        _render_plan_preview(
+        render_plan_preview(
             console,
             result=planned_result,
-            selected_count=len(selected_ids),
-            total_bytes=total_bytes,
+            selected_count=selection.selected_count,
+            total_bytes=selection.total_bytes,
         )
         return
 
@@ -330,93 +277,51 @@ def _run_cleanup_menu(
             mode=execute_mode,
             apply=True,
             delete_confirmation="DELETE" if execute_mode == "delete" else None,
-            confirmed_target_ids=selected_ids,
+            confirmed_target_ids=selection.target_ids,
             local_path_resolver=resolve_local_path,
         )
-    _render_execution_summary(console, result)
+    render_execution_summary(console, result)
 
 
-def _render_plan_preview(
+def _prompt_cleanup_selection(console: Console, *, candidates) -> CleanupSelection | None:
+    selected = _prompt_index_selection(
+        console,
+        prompt_text="Select items (a, 1,3, 2-4, n, q)",
+        total_items=len(candidates),
+        cancelled_message="Cleanup cancelled.",
+    )
+    if selected is None:
+        return None
+    if not selected:
+        console.print("[yellow]No targets selected.[/yellow]")
+        return None
+    return CleanupSelection(
+        target_ids={candidates[index - 1].targetId for index in sorted(selected)},
+        total_bytes=sum(candidates[index - 1].sizeBytes for index in sorted(selected)),
+        selected_count=len(selected),
+    )
+
+
+def _prompt_index_selection(
     console: Console,
     *,
-    result: CleanupServiceResult,
-    selected_count: int,
-    total_bytes: int,
-) -> None:
-    console.print(f"mode={result.plan.mode}")
-    console.print(f"selected items = {selected_count}")
-    console.print(f"selected bytes = {total_bytes}")
-    console.print(f"report_path={result.report_path}")
-    console.print("[yellow]Dry-run preview generated only. No cleanup executed.[/yellow]")
-
-
-def _render_analyze_summary(console: Console, *, result) -> None:
-    root_summary = discover_root_summary(
-        result.configs["fixedTargets"],
-        result.configs["discover"],
-    )
-    console.print(
-        f"discover roots={root_summary['discover_root_count']} "
-        f"source={root_summary['discover_root_source']} "
-        f"entries={len(result.entries)} pending={len(result.suggestions)}"
-    )
-    if result.suggestions:
-        category_counts = Counter(item.category or "uncategorized" for item in result.suggestions)
-        hit_rule_counts = Counter(item.hitRule or "unknown" for item in result.suggestions)
-        top_categories = ", ".join(
-            f"{name}:{count}"
-            for name, count in sorted(category_counts.items(), key=lambda item: (-item[1], item[0]))[:3]
-        )
-        top_rules = ", ".join(
-            f"{name}:{count}"
-            for name, count in sorted(hit_rule_counts.items(), key=lambda item: (-item[1], item[0]))[:3]
-        )
-        console.print(f"pending categories={top_categories}")
-        console.print(f"pending hit rules={top_rules}")
-        _render_analyze_rule_details(console, result=result)
-    console.print(f"snapshot_path={result.snapshot_path}")
-    console.print(f"pending_path={result.pending_path}")
-
-
-def _render_analyze_rule_details(console: Console, *, result) -> None:
-    grouped: dict[str, list] = {}
-    for item in result.suggestions:
-        grouped.setdefault(item.hitRule or "unknown", []).append(item)
-
-    table = Table(title="Analyze Rule Details")
-    table.add_column("Hit Rule")
-    table.add_column("Rule Reason")
-    table.add_column("Count")
-    table.add_column("Top Category")
-    table.add_column("Example Path")
-    for rule_name, items in sorted(grouped.items(), key=lambda pair: (-len(pair[1]), pair[0]))[:5]:
-        category_counts = Counter(item.category or "uncategorized" for item in items)
-        top_category = sorted(category_counts.items(), key=lambda pair: (-pair[1], pair[0]))[0][0]
-        example = sorted(items, key=lambda item: (-(item.sizeBytes or 0), item.path))[0]
-        table.add_row(
-            rule_name,
-            example.hitRuleReason or "-",
-            str(len(items)),
-            top_category,
-            example.path,
-        )
-    console.print(table)
-
-
-def _render_execution_summary(console: Console, result: CleanupServiceResult) -> None:
-    plan = result.plan
-    console.print(f"mode={plan.mode}")
-    console.print(f"report_path={result.report_path}")
-    if result.execution is None:
-        return
-    execution = result.execution
-    applied = [item for item in execution.items if item.outcome == "applied"]
-    skipped = [item for item in execution.items if item.outcome == "skipped"]
-    failed = [item for item in execution.items if item.outcome == "failed"]
-    console.print(f"applied items = {len(applied)}")
-    console.print(f"skipped items = {len(skipped)}")
-    console.print(f"failed items = {len(failed)}")
-    console.print(f"execution_report_path={result.execution_report_path}")
+    prompt_text: str,
+    total_items: int,
+    cancelled_message: str,
+    default: str | None = None,
+) -> set[int] | None:
+    while True:
+        if default is None:
+            raw = typer.prompt(prompt_text).strip()
+        else:
+            raw = typer.prompt(prompt_text, default=default).strip()
+        try:
+            return parse_selection(raw, total_items)
+        except ValueError as exc:
+            if str(exc) == "cancelled":
+                console.print(f"[yellow]{cancelled_message}[/yellow]")
+                return None
+            console.print(f"[red]{exc}[/red]")
 
 
 def _run_advanced_menu(console: Console, *, config_path: Path, state_path: Path, report_dir: Path, quarantine_dir: Path) -> None:
@@ -472,26 +377,16 @@ def _run_restore_menu(console: Console, *, report_dir: Path, quarantine_dir: Pat
         console.print("[yellow]No active quarantine records.[/yellow]")
         return
 
-    table = Table(title="Restore From Quarantine")
-    table.add_column("#")
-    table.add_column("Quarantined At")
-    table.add_column("Path")
-    table.add_column("Bytes")
-    for index, record in enumerate(records, start=1):
-        table.add_row(str(index), record.quarantinedAt, record.sourcePath, str(record.sizeBytes))
-    console.print(table)
+    render_restore_records(console, records=records)
 
-    while True:
-        raw = typer.prompt("Select records to restore (a, 1,3, 2-4, n, q)").strip()
-        try:
-            selected = parse_selection(raw, len(records))
-        except ValueError as exc:
-            if str(exc) == "cancelled":
-                console.print("[yellow]Restore cancelled.[/yellow]")
-                return
-            console.print(f"[red]{exc}[/red]")
-            continue
-        break
+    selected = _prompt_index_selection(
+        console,
+        prompt_text="Select records to restore (a, 1,3, 2-4, n, q)",
+        total_items=len(records),
+        cancelled_message="Restore cancelled.",
+    )
+    if selected is None:
+        return
 
     if not selected:
         console.print("[yellow]No records selected.[/yellow]")

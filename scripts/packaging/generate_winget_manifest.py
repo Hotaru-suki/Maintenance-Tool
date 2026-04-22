@@ -1,23 +1,13 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
-
 import sys
+from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
-
-from maintenancetool.release import (
-    APP_LICENSE,
-    APP_NAME,
-    APP_PUBLISHER,
-    APP_REPOSITORY_URL,
-    APP_WINGET_ID,
-    winget_manifest_name,
-)
 
 MANIFEST_VERSION = "1.12.0"
 PACKAGE_LOCALE = "en-US"
@@ -25,6 +15,14 @@ SHORT_DESCRIPTION = "Lightweight Windows local maintenance tool for safe, review
 
 
 def generate_manifest_text(*, version: str, installer_url: str, installer_sha256: str) -> str:
+    from maintenancetool.release import (
+        APP_LICENSE,
+        APP_NAME,
+        APP_PUBLISHER,
+        APP_REPOSITORY_URL,
+        APP_WINGET_ID,
+    )
+
     lines = [
         f'PackageIdentifier: "{APP_WINGET_ID}"',
         f'PackageVersion: "{version}"',
@@ -74,6 +72,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from maintenancetool.release import winget_manifest_name
+
     parser = build_argument_parser()
     args = parser.parse_args(argv)
     output_path = Path(args.output_path) if args.output_path else PROJECT_ROOT / "dist" / winget_manifest_name(version=args.version)

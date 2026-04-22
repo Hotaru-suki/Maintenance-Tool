@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from maintenancetool.cli.dev import app
 from maintenancetool.ui.launcher import build_launcher_commands, filter_launcher_commands, resolve_exact_command
 from tests.helpers.cli import runner
@@ -47,11 +45,11 @@ def test_launcher_shows_welcome_and_exit(runtime_workspace) -> None:
 
     assert result.exit_code == 0
     assert "MaintenanceTool" in result.stdout
-    assert "Quick Start" in result.stdout
-    assert "Primary Flow" in result.stdout
-    assert "/status" in result.stdout
-    assert "Command Details" in result.stdout
-    assert "Exiting MaintenanceTool." in result.stdout
+    assert "mode: standard" in result.stdout
+    assert "recent:" in result.stdout
+    assert "commands matching `/`" in result.stdout
+    assert "selected: /help" in result.stdout
+    assert "exiting MaintenanceTool" in result.stdout
 
 
 def test_launcher_status_command_prints_summary(runtime_workspace) -> None:
@@ -66,15 +64,14 @@ def test_launcher_status_command_prints_summary(runtime_workspace) -> None:
     )
 
     assert result.exit_code == 0
-    assert "MaintenanceTool Status" in result.stdout
-    assert "Configuration" in result.stdout
-    assert "profile" in result.stdout
+    assert "status" in result.stdout
+    assert "config" in result.stdout
+    assert "- profile: learning-driven-initial" in result.stdout
     assert "learning-driven-initial" in result.stdout
-    assert "Pending" in result.stdout
-    assert "pending_total" in result.stdout
-    assert "Recommended Next" in result.stdout
-    assert "Next Step" in result.stdout
-    assert "/analyze" in result.stdout
+    assert "pending" in result.stdout
+    assert "- total: 0" in result.stdout
+    assert "next" in result.stdout
+    assert "- primary: /analyze" in result.stdout
 
 
 def test_launcher_analyze_shows_followup_guidance(runtime_workspace) -> None:
@@ -89,6 +86,56 @@ def test_launcher_analyze_shows_followup_guidance(runtime_workspace) -> None:
     )
 
     assert result.exit_code == 0
-    assert "Analyze Result" in result.stdout
-    assert "Next Step" in result.stdout
+    assert "analyze" in result.stdout
+    assert "next" in result.stdout
     assert "/review" in result.stdout or "/dryrun" in result.stdout
+
+
+def test_launcher_analyze_review_dryrun_delete_chain(runtime_workspace) -> None:
+    sandbox = runtime_workspace.root / "sandbox"
+    cache_root = sandbox / "cache"
+    extra_root = sandbox / "orphan-cache"
+    cache_root.mkdir(parents=True)
+    extra_root.mkdir(parents=True)
+    (cache_root / "a.bin").write_bytes(b"a" * 16)
+    (extra_root / "b.bin").write_bytes(b"b" * 64)
+
+    write_standard_config(
+        runtime_workspace.config_dir,
+        fixed_targets=[
+            {
+                "id": "cache-root",
+                "path": str(cache_root),
+                "enabled": True,
+                "depth": 2,
+                "deleteMode": "contents",
+                "source": "manual",
+                "category": "cache",
+            }
+        ],
+        discover={"maxDepth": 1, "topN": 10},
+        learning={
+            "safetyPolicy": {
+                "requireManualConfirmForLearnedTargets": False,
+                "requireManualConfirmAboveBytes": 999999999,
+            }
+        },
+    )
+
+    result = invoke_runtime_command(
+        runner,
+        app,
+        runtime_workspace,
+        "launcher",
+        input_text="/analyze\ny\na\nn\n/dryrun\n/delete-safe\ny\n/exit\n",
+    )
+
+    assert result.exit_code == 0
+    assert "pending_suggestions: 1" in result.stdout
+    assert "Accepted" in result.stdout
+    assert "dry-run preview" in result.stdout
+    assert "delete safe execution" in result.stdout
+    assert "applied_items: 2" in result.stdout
+    assert not (cache_root / "a.bin").exists()
+    assert not (extra_root / "b.bin").exists()
+    assert (runtime_workspace.report_dir / "cleanup-execution-delete.json").exists()

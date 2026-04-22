@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from maintenancetool.core.safety import evaluate_fixed_target, evaluate_target
 from maintenancetool.models.schemas import (
     DenyRule,
     DiscoverConfig,
+    FixedTarget,
     SafetyPolicy,
     SnapshotEntry,
     SnapshotState,
@@ -169,11 +171,13 @@ def _collect_discover_entries(
         results.extend(candidates[:top_n])
 
     return results
+
+
 def _iter_candidate_directories(root: Path, max_depth: int) -> list[Path]:
     results: list[Path] = []
-    queue: list[tuple[Path, int]] = [(root, 0)]
+    queue: deque[tuple[Path, int]] = deque([(root, 0)])
     while queue:
-        current, depth = queue.pop(0)
+        current, depth = queue.popleft()
         if depth >= max_depth:
             continue
         try:
@@ -199,9 +203,9 @@ def _measure_path(path: Path, max_depth: int) -> int:
             return 0
 
     total = 0
-    queue: list[tuple[Path, int]] = [(path, 0)]
+    queue: deque[tuple[Path, int]] = deque([(path, 0)])
     while queue:
-        current, depth = queue.pop(0)
+        current, depth = queue.popleft()
         if depth > max_depth:
             continue
         try:

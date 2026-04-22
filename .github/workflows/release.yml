@@ -37,7 +37,12 @@ jobs:
         shell: pwsh
         run: |
           $TagVersion = "${{ github.ref_name }}".TrimStart('v')
-          $ProjectVersion = python -c "from pathlib import Path; import re; text=Path('pyproject.toml').read_text(encoding='utf-8'); print(re.search(r'^version = \"([^\"]+)\"', text, re.M).group(1))"
+          $PyprojectText = Get-Content -Path "pyproject.toml" -Raw -Encoding UTF8
+          $VersionMatch = [regex]::Match($PyprojectText, '(?m)^version = "([^"]+)"')
+          if (-not $VersionMatch.Success) {
+            throw "Could not determine version from pyproject.toml"
+          }
+          $ProjectVersion = $VersionMatch.Groups[1].Value
           if ($TagVersion -ne $ProjectVersion) {
             throw "Tag version $TagVersion does not match pyproject version $ProjectVersion"
           }

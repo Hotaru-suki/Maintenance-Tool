@@ -16,6 +16,10 @@ def test_prompt_yes_no_uses_explicit_uppercase_prompt(monkeypatch) -> None:
 
 def test_parse_yes_no_accepts_only_y_or_n() -> None:
     assert confirm.parse_yes_no("Y") is True
+    assert confirm.parse_yes_no("y") is True
+    assert confirm.parse_yes_no("N") is False
     assert confirm.parse_yes_no("n") is False
     assert confirm.parse_yes_no("") is None
     assert confirm.parse_yes_no("yes") is None
+    assert confirm.parse_yes_no("no") is None
+    assert confirm.parse_yes_no("1") is None

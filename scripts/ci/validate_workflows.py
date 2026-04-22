@@ -10,8 +10,6 @@ WORKFLOW_ROOT = PROJECT_ROOT / ".github" / "workflows"
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.ci.workflow_policy import PACKAGING_REQUIRED_SNIPPETS, WORKFLOW_POLICIES
-
 
 @dataclass(slots=True)
 class ValidationCheck:
@@ -52,6 +50,8 @@ def _check_file_exists(name: str, path: Path) -> ValidationCheck:
 
 
 def _check_workflow_references() -> ValidationCheck:
+    from scripts.ci.workflow_policy import WORKFLOW_POLICIES
+
     missing: list[str] = []
     for policy in WORKFLOW_POLICIES:
         workflow_path = WORKFLOW_ROOT / policy.filename
@@ -73,6 +73,8 @@ def _check_workflow_references() -> ValidationCheck:
 
 
 def _check_packaging_boundary() -> ValidationCheck:
+    from scripts.ci.workflow_policy import PACKAGING_REQUIRED_SNIPPETS
+
     spec_path = PROJECT_ROOT / "packaging" / "pyinstaller" / "MaintenanceTool.spec"
     build_script_path = PROJECT_ROOT / "packaging" / "build-release.ps1"
     installer_script_path = PROJECT_ROOT / "packaging" / "installer" / "MaintenanceTool.iss"

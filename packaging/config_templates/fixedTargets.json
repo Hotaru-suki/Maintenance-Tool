@@ -1,1 +1,62 @@
-[]
+[
+  {
+    "id": "user-temp",
+    "path": "%LOCALAPPDATA%\\Temp",
+    "scopeHint": "windows",
+    "enabled": true,
+    "depth": 2,
+    "deleteMode": "contents",
+    "source": "manual",
+    "category": "temp",
+    "note": "User temp files. Safe default cleanup target.",
+    "priority": 10
+  },
+  {
+    "id": "inet-cache",
+    "path": "%LOCALAPPDATA%\\Microsoft\\Windows\\INetCache",
+    "scopeHint": "windows",
+    "enabled": true,
+    "depth": 2,
+    "deleteMode": "contents",
+    "source": "manual",
+    "category": "browser-cache",
+    "note": "Legacy Windows internet cache.",
+    "priority": 20
+  },
+  {
+    "id": "chrome-default-cache",
+    "path": "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Cache",
+    "scopeHint": "windows",
+    "enabled": true,
+    "depth": 2,
+    "deleteMode": "contents",
+    "source": "manual",
+    "category": "browser-cache",
+    "note": "Chrome default profile cache.",
+    "priority": 30
+  },
+  {
+    "id": "edge-default-cache",
+    "path": "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\Default\\Cache",
+    "scopeHint": "windows",
+    "enabled": true,
+    "depth": 2,
+    "deleteMode": "contents",
+    "source": "manual",
+    "category": "browser-cache",
+    "note": "Edge default profile cache.",
+    "priority": 40
+  },
+  {
+    "id": "vscode-logs",
+    "path": "%APPDATA%\\Code\\logs",
+    "scopeHint": "windows",
+    "enabled": true,
+    "depth": 2,
+    "deleteMode": "contents",
+    "source": "manual",
+    "category": "logs",
+    "note": "Visual Studio Code session logs.",
+    "priority": 50
+  }
+]

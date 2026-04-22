@@ -100,3 +100,28 @@ def test_get_packaged_template_dir_prefers_meipass_templates(monkeypatch, tmp_pa
     selected = runtime_paths.get_packaged_template_dir()
 
     assert selected == meipass_template
+
+
+def test_bootstrap_config_templates_copies_all_default_files(monkeypatch, tmp_path: Path) -> None:
+    template_dir = tmp_path / "bundle" / "config_templates"
+    template_dir.mkdir(parents=True)
+    for name in (
+        "fixedTargets.json",
+        "denyRules.json",
+        "discover.config.json",
+        "learning.config.json",
+    ):
+        (template_dir / name).write_text(f"template:{name}\n", encoding="utf-8")
+
+    config_dir = tmp_path / "workspace" / "config"
+    monkeypatch.setattr(runtime_paths, "get_packaged_template_dir", lambda: template_dir)
+
+    runtime_paths._bootstrap_config_templates(config_dir)
+
+    for name in (
+        "fixedTargets.json",
+        "denyRules.json",
+        "discover.config.json",
+        "learning.config.json",
+    ):
+        assert (config_dir / name).read_text(encoding="utf-8") == f"template:{name}\n"
