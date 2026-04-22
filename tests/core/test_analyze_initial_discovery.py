@@ -23,6 +23,10 @@ def test_analyze_initial_discovery_finds_candidates_without_fixed_targets(
 
     monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
     monkeypatch.setenv("APPDATA", str(appdata))
+    monkeypatch.setattr(
+        "maintenancetool.core.discovery_roots._list_windows_fixed_drive_roots",
+        lambda: [],
+    )
 
     config_dir = tmp_path / "config"
     state_dir = tmp_path / "state"
