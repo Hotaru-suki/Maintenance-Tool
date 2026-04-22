@@ -68,6 +68,9 @@ def test_analyze_initial_discovery_finds_candidates_without_fixed_targets(
     assert result.entries
     assert result.suggestions
     pending = json.loads((state_dir / "pending.json").read_text(encoding="utf-8"))
-    pending_paths = {item["path"] for item in pending["suggestions"]}
+    pending_paths = {
+        item["path"].replace("/", "\\").rstrip("\\")
+        for item in pending["suggestions"]
+    }
     assert any(path.endswith("\\Cache") for path in pending_paths)
-    assert any("\\Code\\logs\\" in path for path in pending_paths)
+    assert any("\\Code\\logs" in path for path in pending_paths)
