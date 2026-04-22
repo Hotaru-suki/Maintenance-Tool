@@ -16,7 +16,7 @@ WORKFLOW_POLICIES: tuple[WorkflowPolicy, ...] = (
         name="ci",
         filename="ci.yml",
         required_snippets=(
-            'python-version: ["3.10", "3.11", "3.12"]',
+            'python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]',
             "pytest -q --junitxml=artifacts/raw/junit.xml",
             "python scripts/ci/collect_test_artifacts.py",
             "python scripts/ci/cleanup_test_artifacts.py",
