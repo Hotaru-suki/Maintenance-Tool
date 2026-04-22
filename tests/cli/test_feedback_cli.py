@@ -36,7 +36,7 @@ def test_feedback_command_outputs_issue_link_with_email_fallback(runtime_workspa
     )
 
     assert result.exit_code == 0
-    assert "feedback_subject=MaintenanceTool [bug] Menu issue" in result.stdout
+    assert "feedback_subject=MyTool [bug] Menu issue" in result.stdout
     assert "feedback_issue_url=https://github.com/Hotaru-suki/Maintenance-Tool/issues/new?" in result.stdout
     assert "feedback_email_url=mailto:siestakawaiis@gmail.com?" in result.stdout
     assert "feedback_channel=manual" in result.stdout

@@ -35,6 +35,6 @@ def test_config_check_reports_discover_root_and_hit_rule_summary(monkeypatch, tm
 
     assert result.ok is True
     assert result.summary is not None
-    assert result.summary["discover_root_source"] == "default-fallback"
+    assert result.summary["discover_root_source"] == "system-drive-fallback"
     assert result.summary["discover_root_count"] >= 1
     assert result.summary["hit_rules_total"] >= 1

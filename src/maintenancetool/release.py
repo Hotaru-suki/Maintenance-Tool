@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from maintenancetool import __version__
+from maintenancetool.branding import PRODUCT_NAME
 
-APP_NAME = "MaintenanceTool"
+APP_NAME = PRODUCT_NAME
 APP_PUBLISHER = "Hotaru-suki"
 APP_REPOSITORY = "Hotaru-suki/Maintenance-Tool"
 APP_REPOSITORY_URL = f"https://github.com/{APP_REPOSITORY}"
@@ -12,7 +13,7 @@ APP_RELEASES_API_LATEST_URL = f"https://api.github.com/repos/{APP_REPOSITORY}/re
 APP_ISSUES_URL = f"{APP_REPOSITORY_URL}/issues"
 APP_ISSUE_NEW_URL = f"{APP_REPOSITORY_URL}/issues/new"
 APP_SUPPORT_EMAIL = "siestakawaiis@gmail.com"
-APP_WINGET_ID = "HotaruSuki.MaintenanceTool"
+APP_WINGET_ID = "HotaruSuki.MyTool"
 APP_LICENSE = "Other"
 
 

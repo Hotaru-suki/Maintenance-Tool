@@ -130,6 +130,12 @@ class SnapshotEntry(BaseModel):
     sourceRootId: str | None = None
 
 
+class DiscoverProgress(BaseModel):
+    scope: ScopeName
+    root: str
+    excludedNames: list[str] = Field(default_factory=list)
+
+
 class PendingSuggestion(BaseModel):
     id: str = Field(min_length=1)
     path: str = Field(min_length=1)

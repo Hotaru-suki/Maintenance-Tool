@@ -10,6 +10,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from maintenancetool.branding import PRODUCT_NAME
 from maintenancetool.core.learning_decisions import load_learning_decision_state
 from maintenancetool.core.path_adapter import resolve_local_path
 from maintenancetool.core.pending import load_pending_state
@@ -27,21 +28,10 @@ from maintenancetool.ui.launcher_views import (
     build_update_panel,
     render_analyze_result,
     render_cleanup_plan_summary,
-    render_post_action_hint,
     render_status_dashboard,
     render_welcome,
 )
-from maintenancetool.ui.menu import _run_review_pending_menu
-from maintenancetool.ui.workflow_guidance import (
-    NextStepSpec,
-    advanced_dryrun_next_step,
-    advanced_quarantine_next_step,
-    analyze_next_step,
-    delete_safe_next_step,
-    dryrun_next_step,
-    restore_next_step,
-    status_next_step,
-)
+from maintenancetool.ui.review_flow import run_review_pending_interaction
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,9 +51,6 @@ class LauncherCommand:
     handler: Callable[[LauncherContext], bool]
     aliases: tuple[str, ...] = ()
     advanced_only: bool = False
-    details: str = ""
-    recommended_next: str | None = None
-    affects: tuple[str, ...] = ()
 
 
 def run_launcher(console: Console, *, config_dir: str, state_dir: str, report_dir: str, quarantine_dir: str) -> None:
@@ -125,20 +112,21 @@ def supports_prompt_toolkit_launcher() -> bool:
 
 def build_launcher_commands() -> list[LauncherCommand]:
     return [
-        LauncherCommand("/help", "Show launcher commands and quick hints", _handle_help, aliases=("/", "/?")),
-        LauncherCommand("/status", "Show config, pending, learning, and analyze summary", _handle_status, aliases=("/st", "/stat"), details="Read-only overview of current configuration health, pending suggestions, learning history, and runtime folders.", recommended_next="/analyze", affects=()),
-        LauncherCommand("/analyze", "Run analyze and build pending learning suggestions", _handle_analyze, aliases=("/a", "/an"), details="Scans discover roots, applies hit rules, updates snapshot state, and writes pending learning suggestions.", recommended_next="/review", affects=("state/lastSnapshot.json", "state/pending.json")),
-        LauncherCommand("/review", "Review pending learning suggestions", _handle_review, aliases=("/r", "/rev"), details="Accepts or rejects pending learning suggestions and updates learned targets and learning decision history.", recommended_next="/dryrun", affects=("config/fixedTargets.json", "state/pending.json", "state/learningDecisions.json")),
-        LauncherCommand("/dryrun", "Preview cleanup candidates without deleting anything", _handle_dryrun, aliases=("/d", "/dr"), details="Builds a cleanup plan only. No files are removed or moved.", recommended_next="/delete-safe", affects=("reports/cleanup-plan-dry-run.json",)),
-        LauncherCommand("/delete-safe", "Delete low-risk allowed cleanup targets", _handle_delete_safe, aliases=("/del", "/ds"), details="Reviews low-risk allowed candidates and executes a confirmed delete pass for them.", recommended_next="/report", affects=("reports/cleanup-plan-dry-run.json", "reports/cleanup-execution-delete.json")),
-        LauncherCommand("/restore", "Restore items from quarantine", _handle_restore, aliases=("/res", "/restore-quarantine"), details="Lists active quarantine records and lets you restore protected payloads back to their source paths.", recommended_next="/report", affects=("reports/restore-execution.json", ".quarantine")),
-        LauncherCommand("/check-update", "Check GitHub release updates", _handle_check_update, aliases=("/update", "/cu"), details="Refreshes release metadata from GitHub and opens the latest installer page when a newer version exists.", recommended_next="/report", affects=("state/update-state.json",)),
-        LauncherCommand("/report", "Show report, state, and quarantine locations", _handle_report, aliases=("/rep",), details="Prints the active runtime folders so you can inspect generated state, reports, and quarantine data directly.", affects=("config", "state", "reports", ".quarantine")),
-        LauncherCommand("/feedback", "Send feedback to the author", _handle_feedback, aliases=("/fb",), details="Opens a prefilled GitHub issue page and falls back to author email if needed.", affects=()),
-        LauncherCommand("/config-check", "Run advanced configuration validation", _handle_config_check, aliases=("/cc",), advanced_only=True, details="Administrator-only validation of config files, discover roots, and hit rule metadata.", recommended_next="/status", affects=("config",)),
-        LauncherCommand("/advanced-dryrun", "Preview all cleanup candidates in advanced mode", _handle_advanced_dryrun, aliases=("/adr",), advanced_only=True, details="Administrator-only preview of the full cleanup plan before quarantine or delete operations.", recommended_next="/advanced-quarantine", affects=("reports/cleanup-plan-dry-run.json",)),
-        LauncherCommand("/advanced-quarantine", "Move selected targets into quarantine in advanced mode", _handle_advanced_quarantine, aliases=("/aq",), advanced_only=True, details="Administrator-only quarantine planning entrypoint for higher-risk cleanup workflows.", recommended_next="/restore", affects=("reports/cleanup-plan-quarantine.json", ".quarantine")),
-        LauncherCommand("/exit", "Exit MaintenanceTool", _handle_exit, aliases=("/quit", "/q"), details="Closes the launcher session.", affects=()),
+        LauncherCommand("/", "List commands", _handle_help, aliases=("/help", "/?")),
+        LauncherCommand("/analyze", "Scan drives and find cleanup candidates", _handle_analyze, aliases=("/a",)),
+        LauncherCommand("/analyze-fixed", "Scan fixed targets only", _handle_analyze_fixed, aliases=("/af",)),
+        LauncherCommand("/review", "Accept or reject learned candidates", _handle_review, aliases=("/r",)),
+        LauncherCommand("/dryrun", "Preview what can be cleaned", _handle_dryrun, aliases=("/d",)),
+        LauncherCommand("/delete-safe", "Delete low-risk allowed items", _handle_delete_safe, aliases=("/ds",)),
+        LauncherCommand("/restore", "Restore from quarantine", _handle_restore, aliases=("/rs",)),
+        LauncherCommand("/report", "Show config, state, report, and quarantine paths", _handle_report, aliases=("/rp",)),
+        LauncherCommand("/status", "Show current scan and learning status", _handle_status, aliases=("/s",)),
+        LauncherCommand("/update", "Check for updates", _handle_check_update, aliases=("/u",)),
+        LauncherCommand("/feedback", "Send feedback", _handle_feedback, aliases=("/f",)),
+        LauncherCommand("/config-check", "Validate config files", _handle_config_check, aliases=("/cc",), advanced_only=True),
+        LauncherCommand("/advanced-dryrun", "Preview all allowed cleanup actions", _handle_advanced_dryrun, aliases=("/ad",), advanced_only=True),
+        LauncherCommand("/advanced-quarantine", "Move selected items into quarantine", _handle_advanced_quarantine, aliases=("/aq",), advanced_only=True),
+        LauncherCommand("/exit", f"Exit {PRODUCT_NAME}", _handle_exit, aliases=("/q", "/quit")),
     ]
 
 
@@ -242,15 +230,6 @@ def _run_prompt_toolkit_launcher(context: LauncherContext, commands: list[Launch
         for index, command in enumerate(matches[:8]):
             prefix = "&gt;" if index == state["selected_index"] else " "
             lines.append(f"{prefix} <b>{command.name}</b>  {command.description}")
-        selected = matches[min(state["selected_index"], len(matches[:8]) - 1)]
-        lines.append(
-            f"<style fg='ansicyan'>selected: {selected.name}</style> "
-            f"<style fg='ansibrightblack'>| next: {selected.recommended_next or '-'} "
-            f"| aliases: {', '.join(selected.aliases) if selected.aliases else '-'} "
-            f"| affects: {', '.join(selected.affects) if selected.affects else 'read-only'}</style>"
-        )
-        if selected.details:
-            lines.append(f"<style fg='ansibrightblack'>{selected.details}</style>")
         lines.append("<style fg='ansibrightblack'>type / to list commands, arrows to move, enter to run</style>")
         return HTML("\n".join(lines))
 
@@ -294,7 +273,7 @@ def _run_prompt_toolkit_launcher(context: LauncherContext, commands: list[Launch
         try:
             text = session.prompt(default="/")
         except (EOFError, KeyboardInterrupt):
-            context.console.print("[yellow]exiting MaintenanceTool[/yellow]")
+            context.console.print(f"[yellow]exiting {PRODUCT_NAME}[/yellow]")
             return True
 
         query = state["submitted"] or text.strip() or "/"
@@ -325,12 +304,6 @@ def _handle_help(context: LauncherContext) -> bool:
         commands=filter_launcher_commands(build_launcher_commands(), "/", advanced_enabled=context.advanced_enabled),
         query="/",
     )
-    render_post_action_hint(
-        context.console,
-        primary="/status",
-        aliases=("/st", "/stat"),
-        note="Open the live dashboard before starting analysis or cleanup.",
-    )
     return True
 
 
@@ -350,20 +323,17 @@ def _handle_status(context: LauncherContext) -> bool:
         learning_state=learning_state,
         update_status=get_update_status(context.state_path, refresh_if_stale=True),
     )
-    next_step = status_next_step(
-        has_pending=pending_state is not None and pending_state.summary.totalSuggestions > 0,
-        has_learning=learning_state is not None and learning_state.summary.totalDecisions > 0,
-    )
-    _render_next_step(context, next_step)
     return True
 
 
 def _handle_analyze(context: LauncherContext) -> bool:
-    result = run_analyze_service(
-        config_path=context.config_path,
-        state_path=context.state_path,
-        local_path_resolver=resolve_local_path,
-    )
+    with context.console.status("Scanning discover roots..."):
+        result = run_analyze_service(
+            config_path=context.config_path,
+            state_path=context.state_path,
+            discover_mode="full",
+            local_path_resolver=resolve_local_path,
+        )
     render_analyze_result(
         context.console,
         result=result,
@@ -372,23 +342,31 @@ def _handle_analyze(context: LauncherContext) -> bool:
     )
     if result.suggestions:
         if prompt_yes_no(f"Review {len(result.suggestions)} pending learning suggestion(s) now?"):
-            _run_review_pending_menu(context.console, config_path=context.config_path, state_path=context.state_path)
-            _render_next_step(context, analyze_next_step(has_suggestions=True, reviewed_now=True))
+            run_review_pending_interaction(context.console, config_path=context.config_path, state_path=context.state_path)
             return True
-        _render_next_step(context, analyze_next_step(has_suggestions=True, reviewed_now=False))
         return True
-    _render_next_step(context, analyze_next_step(has_suggestions=False, reviewed_now=False))
+    return True
+
+
+def _handle_analyze_fixed(context: LauncherContext) -> bool:
+    with context.console.status("Scanning fixed targets..."):
+        result = run_analyze_service(
+            config_path=context.config_path,
+            state_path=context.state_path,
+            discover_mode="fixed-only",
+            local_path_resolver=resolve_local_path,
+        )
+    render_analyze_result(
+        context.console,
+        result=result,
+        fixed_targets=result.configs["fixedTargets"],
+        discover_config=result.configs["discover"],
+    )
     return True
 
 
 def _handle_review(context: LauncherContext) -> bool:
-    _run_review_pending_menu(context.console, config_path=context.config_path, state_path=context.state_path)
-    render_post_action_hint(
-        context.console,
-        primary="/dryrun",
-        aliases=("/d", "/dr"),
-        note="Review decisions are saved. Preview cleanup candidates next.",
-    )
+    run_review_pending_interaction(context.console, config_path=context.config_path, state_path=context.state_path)
     return True
 
 
@@ -402,15 +380,6 @@ def _handle_dryrun(context: LauncherContext) -> bool:
         local_path_resolver=resolve_local_path,
     )
     render_cleanup_plan_summary(context.console, title="Dry-run Preview", result=result)
-    safe_items = [
-        item for item in result.plan.items
-        if item.allowed and item.riskLevel == "low" and not item.requiresManualConfirm
-    ]
-    next_step = dryrun_next_step(
-        has_safe_candidates=bool(safe_items),
-        has_any_candidates=bool(result.plan.items),
-    )
-    _render_next_step(context, next_step)
     return True
 
 
@@ -486,7 +455,6 @@ def _handle_delete_safe(context: LauncherContext) -> bool:
                 context.console.print(f"- deleted: {item.path}")
         else:
             context.console.print("[yellow]safe delete cancelled[/yellow]")
-    _render_next_step(context, delete_safe_next_step(has_safe_candidates=bool(safe_items)))
     return True
 
 
@@ -517,7 +485,6 @@ def _handle_restore(context: LauncherContext) -> bool:
         for record in preview.records[:8]:
             restore_table.add_row(record.recordId, record.sourcePath, str(record.sizeBytes))
         context.console.print(restore_table)
-    _render_next_step(context, restore_next_step(has_records=bool(preview.records)))
     return True
 
 
@@ -534,14 +501,6 @@ def _handle_report(context: LauncherContext) -> bool:
             border_style="blue",
         )
     )
-    render_post_action_hint(
-        context.console,
-        primary="/check-update",
-        aliases=("/update", "/cu"),
-        note="Inspect updates, or open the feedback entry if you need to contact the author.",
-        alternate="/feedback",
-        alternate_aliases=("/fb",),
-    )
     return True
 
 
@@ -549,25 +508,14 @@ def _handle_check_update(context: LauncherContext) -> bool:
     status = get_update_status(context.state_path, force_refresh=True)
     context.console.print(build_update_panel(status))
     if not status.update_available:
-        render_post_action_hint(
-            context.console,
-            primary="/status",
-            aliases=("/st", "/stat"),
-            note="No newer release was found. Continue with the current version.",
-        )
         return True
 
     if prompt_yes_no("Open the latest release download page now?"):
         opened = open_update_download(status)
         message = "Release page opened in your default browser." if opened else "Could not open the browser automatically."
     else:
-        message = "Update detected. You can open `/check-update` again later."
-    render_post_action_hint(
-        context.console,
-        primary="/report",
-        aliases=("/rep",),
-        note=message,
-    )
+        message = "Update detected. You can open `/update` again later."
+    context.console.print(message)
     return True
 
 
@@ -597,12 +545,6 @@ def _handle_feedback(context: LauncherContext) -> bool:
             border_style="magenta",
         )
     )
-    render_post_action_hint(
-        context.console,
-        primary="/report",
-        aliases=("/rep",),
-        note="If the issue page did not open, use the fallback email link manually.",
-    )
     return True
 
 
@@ -625,12 +567,6 @@ def _handle_config_check(context: LauncherContext) -> bool:
         for warning in result.warnings:
             warning_table.add_row(warning)
         context.console.print(warning_table)
-    render_post_action_hint(
-        context.console,
-        primary="/status",
-        aliases=("/st", "/stat"),
-        note="Re-open the dashboard to inspect the effective configuration state.",
-    )
     return True
 
 
@@ -644,12 +580,6 @@ def _handle_advanced_dryrun(context: LauncherContext) -> bool:
         local_path_resolver=resolve_local_path,
     )
     render_cleanup_plan_summary(context.console, title="Advanced Dry-run", result=result)
-    _render_next_step(
-        context,
-        advanced_dryrun_next_step(
-            has_allowed_candidates=any(item.allowed for item in result.plan.items),
-        ),
-    )
     return True
 
 
@@ -663,26 +593,9 @@ def _handle_advanced_quarantine(context: LauncherContext) -> bool:
         local_path_resolver=resolve_local_path,
     )
     render_cleanup_plan_summary(context.console, title="Advanced Quarantine Preview", result=result)
-    _render_next_step(
-        context,
-        advanced_quarantine_next_step(
-            has_allowed_candidates=any(item.allowed for item in result.plan.items),
-        ),
-    )
     return True
 
 
 def _handle_exit(context: LauncherContext) -> bool:
-    context.console.print("[yellow]exiting MaintenanceTool[/yellow]")
+    context.console.print(f"[yellow]exiting {PRODUCT_NAME}[/yellow]")
     return False
-
-
-def _render_next_step(context: LauncherContext, spec: NextStepSpec) -> None:
-    render_post_action_hint(
-        context.console,
-        primary=spec.primary,
-        aliases=spec.aliases,
-        note=spec.note,
-        alternate=spec.alternate,
-        alternate_aliases=spec.alternate_aliases,
-    )

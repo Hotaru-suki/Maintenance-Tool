@@ -3,4 +3,4 @@ param(
     [string[]]$ArgsList
 )
 
-& "$PSScriptRoot\MaintenanceTool.exe" @ArgsList
+& "$PSScriptRoot\MyTool.exe" @ArgsList

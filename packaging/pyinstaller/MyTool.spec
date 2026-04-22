@@ -1,10 +1,17 @@
 import importlib.util
 from pathlib import Path
+import sys
 
 project_root = Path.cwd()
 src_root = project_root / "src"
+if str(src_root) not in sys.path:
+    sys.path.insert(0, str(src_root))
+
+from maintenancetool.branding import PRODUCT_EXE_NAME, PRODUCT_ICON_NAME, PRODUCT_NAME
+
+src_root = project_root / "src"
 template_root = project_root / "packaging" / "config_templates"
-icon_path = project_root / "packaging" / "assets" / "MaintenanceTool.ico"
+icon_path = project_root / "packaging" / "assets" / PRODUCT_ICON_NAME
 hiddenimports = []
 
 if importlib.util.find_spec("tzdata") is not None:
@@ -33,7 +40,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="MaintenanceTool",
+    name=Path(PRODUCT_EXE_NAME).stem,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -49,5 +56,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="MaintenanceTool",
+    name=PRODUCT_NAME,
 )

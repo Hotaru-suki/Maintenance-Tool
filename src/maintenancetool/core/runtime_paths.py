@@ -7,9 +7,16 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from maintenancetool.branding import PRODUCT_NAME
 
-APP_NAME = "MaintenanceTool"
+APP_NAME = PRODUCT_NAME
 WINDOWS_DATA_DIRNAME = APP_NAME
+WORKSPACE_ROOT_CONFIG_FILENAME = "workspace-root.txt"
+WINDOWS_PROTECTED_INSTALL_ROOTS = (
+    Path("C:/Program Files"),
+    Path("C:/Program Files (x86)"),
+    Path("C:/Windows"),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +100,12 @@ def _resolve_workspace_root() -> Path:
     if override:
         return Path(override).expanduser().resolve()
     if os.name == "nt":
+        configured_root = _resolve_windows_configured_workspace_root()
+        if configured_root is not None:
+            return configured_root
+        portable_root = _resolve_windows_portable_workspace_root()
+        if portable_root is not None:
+            return portable_root
         return _resolve_windows_workspace_root()
     xdg_state_home = os.getenv("XDG_STATE_HOME")
     if xdg_state_home:
@@ -105,6 +118,31 @@ def _resolve_windows_workspace_root() -> Path:
     return documents_root / WINDOWS_DATA_DIRNAME
 
 
+def _resolve_windows_portable_workspace_root() -> Path | None:
+    if not getattr(sys, "frozen", False):
+        return None
+    executable_dir = _resolve_executable_dir()
+    if _is_windows_protected_install_root(executable_dir):
+        return None
+    return executable_dir / "workspace"
+
+
+def _resolve_windows_configured_workspace_root() -> Path | None:
+    if not getattr(sys, "frozen", False):
+        return None
+    executable_dir = _resolve_executable_dir()
+    config_path = executable_dir / WORKSPACE_ROOT_CONFIG_FILENAME
+    if not config_path.exists():
+        return None
+    raw = config_path.read_text(encoding="utf-8-sig").strip()
+    if not raw:
+        return None
+    configured = Path(raw).expanduser()
+    if not configured.is_absolute():
+        configured = executable_dir / configured
+    return configured.resolve()
+
+
 def _resolve_windows_documents_root() -> Path:
     for env_name in ("MAINTENANCETOOL_DOCUMENTS_ROOT", "USERPROFILE"):
         env_value = os.getenv(env_name)
@@ -114,6 +152,21 @@ def _resolve_windows_documents_root() -> Path:
                 return candidate / "Documents"
             return candidate
     return Path.home() / "Documents"
+
+
+def _is_windows_protected_install_root(path: Path) -> bool:
+    normalized = path.resolve()
+    for root in WINDOWS_PROTECTED_INSTALL_ROOTS:
+        try:
+            normalized.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def _resolve_executable_dir() -> Path:
+    return Path(sys.executable).resolve().parent
 
 
 def _bootstrap_config_templates(config_dir: Path) -> None:

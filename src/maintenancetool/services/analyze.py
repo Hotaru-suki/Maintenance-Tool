@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 from maintenancetool.core.config_loader import load_all_configs
-from maintenancetool.core.discovery_roots import has_default_discover_environment
+from maintenancetool.core.discovery_roots import (
+    default_discovery_excluded_names,
+    has_default_discover_environment,
+    resolve_discover_roots,
+)
 from maintenancetool.core.diff import build_pending_suggestions, compute_last_seen_at, compute_missing_counts
 from maintenancetool.core.learning_decisions import build_decision_index, load_learning_decision_state
 from maintenancetool.core.path_adapter import LocalPathResolver, resolve_local_path
@@ -22,6 +27,7 @@ def run_analyze_service(
     *,
     config_path: Path,
     state_path: Path,
+    discover_mode: Literal["full", "fixed-only"] = "full",
     local_path_resolver: LocalPathResolver = resolve_local_path,
 ) -> AnalyzeServiceResult:
     configs = load_all_configs(config_path)
@@ -30,10 +36,16 @@ def run_analyze_service(
     learning_decisions_path = state_path / "learningDecisions.json"
     previous_state = load_snapshot_state(snapshot_path)
     learning_decisions = load_learning_decision_state(learning_decisions_path)
-    current_entries = collect_snapshot_entries(
+    discover_roots = (
+        resolve_discover_roots(configs["fixedTargets"], configs["discover"])
+        if discover_mode == "full"
+        else []
+    )
+    current_entries, progress = collect_snapshot_entries(
         fixed_targets=configs["fixedTargets"],
         deny_rules=configs["denyRules"],
         discover_config=configs["discover"],
+        include_discovery=discover_mode == "full",
         safety_policy=configs["learning"].safetyPolicy,
         local_path_resolver=local_path_resolver,
     )
@@ -81,5 +93,15 @@ def run_analyze_service(
         pending_path=pending_path,
         entries=current_entries,
         suggestions=suggestions,
+        discover_roots=discover_roots,
+        discover_mode=discover_mode,
+        excluded_names=sorted(
+            {
+                name
+                for scope, _root in discover_roots
+                for name in default_discovery_excluded_names(scope)
+            }
+        ),
+        progress=progress,
         initial_discovery_ready=initial_discovery_ready,
     )

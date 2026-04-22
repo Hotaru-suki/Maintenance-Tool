@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from maintenancetool.branding import PRODUCT_NAME
 from maintenancetool.release import (
     APP_RELEASES_API_LATEST_URL,
     APP_RELEASES_LATEST_URL,
@@ -122,7 +123,7 @@ def _fetch_latest_release(*, timeout_seconds: float) -> UpdateStatus | None:
         APP_RELEASES_API_LATEST_URL,
         headers={
             "Accept": "application/vnd.github+json",
-            "User-Agent": "MaintenanceTool",
+            "User-Agent": PRODUCT_NAME,
         },
     )
     try:

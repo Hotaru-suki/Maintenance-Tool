@@ -8,6 +8,10 @@ from tests.helpers.configuration import write_json
 def test_default_discover_roots_uses_windows_environment(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "LocalAppData"))
     monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
+    monkeypatch.setattr(
+        "maintenancetool.core.discovery_roots._list_windows_fixed_drive_roots",
+        lambda: [],
+    )
 
     roots = default_discover_roots()
 
@@ -15,9 +19,24 @@ def test_default_discover_roots_uses_windows_environment(monkeypatch, tmp_path: 
     assert any("LocalAppData" in root for _scope, root in roots)
 
 
+def test_default_discover_roots_prefers_fixed_windows_drives(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "maintenancetool.core.discovery_roots._list_windows_fixed_drive_roots",
+        lambda: ["C:\\", "D:\\"],
+    )
+
+    roots = default_discover_roots()
+
+    assert roots == [("windows", "C:"), ("windows", "D:")]
+
+
 def test_resolve_discover_roots_falls_back_when_config_has_no_roots(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "LocalAppData"))
     monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
+    monkeypatch.setattr(
+        "maintenancetool.core.discovery_roots._list_windows_fixed_drive_roots",
+        lambda: [],
+    )
     write_json(tmp_path / "fixedTargets.json", [])
     write_json(tmp_path / "denyRules.json", [])
     write_json(

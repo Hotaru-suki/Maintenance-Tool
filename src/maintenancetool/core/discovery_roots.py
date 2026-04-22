@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import os
 
 from maintenancetool.core.config_expansion import expand_config_path
@@ -13,6 +14,15 @@ _WINDOWS_DEFAULT_ROOTS: tuple[tuple[str, str | None], ...] = (
     ("%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Cache", "browser-cache"),
     ("%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\Default\\Cache", "browser-cache"),
     ("%APPDATA%\\Code\\logs", "logs"),
+)
+
+_WINDOWS_DEFAULT_EXCLUDED_NAMES: tuple[str, ...] = (
+    "$Recycle.Bin",
+    "Program Files",
+    "Program Files (x86)",
+    "ProgramData",
+    "System Volume Information",
+    "Windows",
 )
 
 
@@ -39,6 +49,10 @@ def resolve_discover_roots(
 
 
 def default_discover_roots() -> list[tuple[str, str]]:
+    drive_roots = _list_windows_fixed_drive_roots()
+    if drive_roots:
+        return [("windows", normalize_path(root, "windows")) for root in drive_roots]
+
     roots: list[tuple[str, str]] = []
     for path_template, _category in _WINDOWS_DEFAULT_ROOTS:
         expanded = expand_config_path(path_template)
@@ -47,6 +61,12 @@ def default_discover_roots() -> list[tuple[str, str]]:
         scope = resolve_scope(expanded, "windows")
         roots.append((scope, normalize_path(expanded, scope)))
     return roots
+
+
+def default_discovery_excluded_names(scope: str) -> list[str]:
+    if scope == "windows":
+        return list(_WINDOWS_DEFAULT_EXCLUDED_NAMES)
+    return []
 
 
 def has_default_discover_environment() -> bool:
@@ -62,7 +82,7 @@ def discover_root_summary(
     resolved_roots = resolve_discover_roots(fixed_targets, discover_config)
     source = "explicit"
     if explicit_override_count == 0 and not fixed_targets:
-        source = "default-fallback"
+        source = "system-drive-fallback"
     elif explicit_override_count == 0 and fixed_targets:
         source = "target-parent"
     return {
@@ -72,3 +92,25 @@ def discover_root_summary(
         "default_fallback_root_count": len(fallback_roots),
         "default_environment_ready": has_default_discover_environment(),
     }
+
+
+def _list_windows_fixed_drive_roots() -> list[str]:
+    if os.name != "nt":
+        return []
+    try:
+        bitmask = ctypes.windll.kernel32.GetLogicalDrives()
+    except Exception:
+        return []
+
+    drive_roots: list[str] = []
+    for index in range(26):
+        if not (bitmask & (1 << index)):
+            continue
+        drive = f"{chr(ord('A') + index)}:\\"
+        try:
+            drive_type = ctypes.windll.kernel32.GetDriveTypeW(drive)
+        except Exception:
+            continue
+        if drive_type == 3:
+            drive_roots.append(drive)
+    return drive_roots

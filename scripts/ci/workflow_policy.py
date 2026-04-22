@@ -62,14 +62,17 @@ WORKFLOW_POLICIES: tuple[WorkflowPolicy, ...] = (
 
 PACKAGING_REQUIRED_SNIPPETS: tuple[str, ...] = (
     'excludes=["pytest", "tests"]',
-    '$InstallerScriptPath = Join-Path $ProjectRoot "packaging\\installer\\MaintenanceTool.iss"',
+    '$InstallerScriptPath = Join-Path $ProjectRoot "packaging\\installer\\MyTool.iss"',
     '$SignScriptPath = Join-Path $ProjectRoot "packaging\\sign-release.ps1"',
+    '$BrandingScriptPath = Join-Path $ProjectRoot "scripts\\packaging\\export_branding.py"',
+    'ConvertFrom-Json',
     'Copy-Item -Recurse -Force $TemplateDir (Join-Path $ReleaseRoot "config_templates")',
-    'Copy-Item -Force (Join-Path $LauncherDir "mtool.cmd") (Join-Path $ReleaseRoot "mtool.cmd")',
+    'Copy-Item -Force (Join-Path $LauncherDir "$CliName.cmd") (Join-Path $ReleaseRoot "$CliName.cmd")',
     'Copy-Item -Force (Join-Path $ProjectRoot "README.md") (Join-Path $ReleaseRoot "README.md")',
     'Copy-Item -Force (Join-Path $ProjectRoot "README.zh-CN.md") (Join-Path $ReleaseRoot "README.zh-CN.md")',
     '$WingetManifestScriptPath = Join-Path $ProjectRoot "scripts\\packaging\\generate_winget_manifest.py"',
     'Get-Command "ISCC.exe" -ErrorAction SilentlyContinue',
+    '"/DAppName=$ProductName"',
     'ChangesEnvironment=yes',
     'icon=str(icon_path)',
 )

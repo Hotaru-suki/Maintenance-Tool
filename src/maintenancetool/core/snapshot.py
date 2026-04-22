@@ -5,7 +5,7 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
-from maintenancetool.core.discovery_roots import resolve_discover_roots
+from maintenancetool.core.discovery_roots import default_discovery_excluded_names, resolve_discover_roots
 from maintenancetool.core.hit_rules import match_discovery_candidate
 from maintenancetool.core.path_adapter import (
     LocalPathResolver,
@@ -15,6 +15,7 @@ from maintenancetool.core.path_adapter import (
 from maintenancetool.core.scope import normalize_path, resolve_scope
 from maintenancetool.core.safety import evaluate_fixed_target, evaluate_target
 from maintenancetool.models.schemas import (
+    DiscoverProgress,
     DenyRule,
     DiscoverConfig,
     FixedTarget,
@@ -48,10 +49,11 @@ def collect_snapshot_entries(
     fixed_targets: list[FixedTarget],
     deny_rules: list[DenyRule],
     discover_config: DiscoverConfig,
+    include_discovery: bool = True,
     safety_policy: SafetyPolicy | None = None,
     local_path_resolver: LocalPathResolver = resolve_local_path,
     collected_at: str | None = None,
-) -> list[SnapshotEntry]:
+) -> tuple[list[SnapshotEntry], list[DiscoverProgress]]:
     timestamp = collected_at or _utc_now()
     entries: list[SnapshotEntry] = []
     covered: set[tuple[str, str]] = set()
@@ -89,18 +91,20 @@ def collect_snapshot_entries(
         )
         covered.add((scope, normalized_path))
 
-    discover_roots = resolve_discover_roots(fixed_targets, discover_config)
-    discover_entries = _collect_discover_entries(
-        roots=discover_roots,
-        deny_rules=deny_rules,
-        discover_config=discover_config,
-        covered=covered,
-        safety_policy=safety_policy,
-        local_path_resolver=local_path_resolver,
-        collected_at=timestamp,
-    )
-    entries.extend(discover_entries)
-    return sorted(entries, key=lambda item: (item.scope, -item.sizeBytes, item.path))
+    progress: list[DiscoverProgress] = []
+    if include_discovery:
+        discover_roots = resolve_discover_roots(fixed_targets, discover_config)
+        discover_entries, progress = _collect_discover_entries(
+            roots=discover_roots,
+            deny_rules=deny_rules,
+            discover_config=discover_config,
+            covered=covered,
+            safety_policy=safety_policy,
+            local_path_resolver=local_path_resolver,
+            collected_at=timestamp,
+        )
+        entries.extend(discover_entries)
+    return sorted(entries, key=lambda item: (item.scope, -item.sizeBytes, item.path)), progress
 
 
 def _collect_discover_entries(
@@ -112,19 +116,32 @@ def _collect_discover_entries(
     safety_policy: SafetyPolicy | None,
     local_path_resolver: LocalPathResolver,
     collected_at: str,
-) -> list[SnapshotEntry]:
+) -> tuple[list[SnapshotEntry], list[DiscoverProgress]]:
     results: list[SnapshotEntry] = []
+    progress: list[DiscoverProgress] = []
 
     for scope, root in roots:
         root_path = local_path_resolver(root, scope=scope)
         if not root_path.exists() or not root_path.is_dir():
             continue
+        excluded_names = default_discovery_excluded_names(scope)
+        progress.append(
+            DiscoverProgress(
+                scope=scope,
+                root=root,
+                excludedNames=excluded_names,
+            )
+        )
         top_n = _resolve_top_n(discover_config, scope, root)
         max_depth = _resolve_max_depth(discover_config, scope, root)
         min_bytes = _resolve_min_bytes(discover_config, scope, root)
 
         candidates: list[SnapshotEntry] = []
-        for candidate in _iter_candidate_directories(root_path, max_depth=max_depth):
+        for candidate in _iter_candidate_directories(
+            root_path,
+            max_depth=max_depth,
+            excluded_names=set(name.casefold() for name in excluded_names),
+        ):
             candidate_path = logical_path_from_local(
                 root_logical=root,
                 root_local=root_path,
@@ -170,10 +187,10 @@ def _collect_discover_entries(
         candidates.sort(key=lambda item: (-item.sizeBytes, item.path))
         results.extend(candidates[:top_n])
 
-    return results
+    return results, progress
 
 
-def _iter_candidate_directories(root: Path, max_depth: int) -> list[Path]:
+def _iter_candidate_directories(root: Path, max_depth: int, excluded_names: set[str]) -> list[Path]:
     results: list[Path] = []
     queue: deque[tuple[Path, int]] = deque([(root, 0)])
     while queue:
@@ -189,6 +206,8 @@ def _iter_candidate_directories(root: Path, max_depth: int) -> list[Path]:
                 if child.is_symlink() or not child.is_dir():
                     continue
             except OSError:
+                continue
+            if child.name.casefold() in excluded_names:
                 continue
             results.append(child)
             queue.append((child, depth + 1))

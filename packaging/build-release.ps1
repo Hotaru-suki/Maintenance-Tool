@@ -9,13 +9,19 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $DistRoot = Join-Path $ProjectRoot "dist"
 $BuildRoot = Join-Path $ProjectRoot "build"
-$SpecPath = Join-Path $ProjectRoot "packaging\pyinstaller\MaintenanceTool.spec"
-$InstallerScriptPath = Join-Path $ProjectRoot "packaging\installer\MaintenanceTool.iss"
+$SpecPath = Join-Path $ProjectRoot "packaging\pyinstaller\MyTool.spec"
+$InstallerScriptPath = Join-Path $ProjectRoot "packaging\installer\MyTool.iss"
 $SignScriptPath = Join-Path $ProjectRoot "packaging\sign-release.ps1"
 $WingetManifestScriptPath = Join-Path $ProjectRoot "scripts\packaging\generate_winget_manifest.py"
+$BrandingScriptPath = Join-Path $ProjectRoot "scripts\packaging\export_branding.py"
 $TemplateDir = Join-Path $ProjectRoot "packaging\config_templates"
 $LauncherDir = Join-Path $ProjectRoot "launcher"
-$DistAppRoot = Join-Path $DistRoot "MaintenanceTool"
+$Branding = (& $PythonExe $BrandingScriptPath | ConvertFrom-Json)
+$ProductName = [string]$Branding.product_name
+$ProductExeName = [string]$Branding.product_exe_name
+$ProductIconName = [string]$Branding.product_icon_name
+$CliName = [string]$Branding.cli_name
+$DistAppRoot = Join-Path $DistRoot $ProductName
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $PyprojectPath = Join-Path $ProjectRoot "pyproject.toml"
@@ -46,13 +52,13 @@ if (-not (Test-Path $DistAppRoot)) {
 }
 
 if (Test-Path $SignScriptPath) {
-    & $SignScriptPath -Paths @((Join-Path $DistAppRoot "MaintenanceTool.exe"))
+    & $SignScriptPath -Paths @((Join-Path $DistAppRoot $ProductExeName))
     if ($LASTEXITCODE -ne 0) {
         throw "Runtime executable signing failed with exit code $LASTEXITCODE"
     }
 }
 
-$ReleaseName = "MaintenanceTool-$VersionTag-$PlatformTag"
+$ReleaseName = "$ProductName-$VersionTag-$PlatformTag"
 $ReleaseRoot = Join-Path $DistRoot $ReleaseName
 if (Test-Path $ReleaseRoot) {
     Remove-Item -Recurse -Force $ReleaseRoot
@@ -61,10 +67,8 @@ if (Test-Path $ReleaseRoot) {
 New-Item -ItemType Directory -Path $ReleaseRoot | Out-Null
 Copy-Item -Recurse -Force (Join-Path $DistAppRoot "*") $ReleaseRoot
 Copy-Item -Recurse -Force $TemplateDir (Join-Path $ReleaseRoot "config_templates")
-Copy-Item -Force (Join-Path $LauncherDir "mtool.cmd") (Join-Path $ReleaseRoot "mtool.cmd")
-Copy-Item -Force (Join-Path $LauncherDir "mtool.ps1") (Join-Path $ReleaseRoot "mtool.ps1")
-Copy-Item -Force (Join-Path $LauncherDir "MaintenanceTool.bat") (Join-Path $ReleaseRoot "MaintenanceTool.bat")
-Copy-Item -Force (Join-Path $LauncherDir "MaintenanceTool.ps1") (Join-Path $ReleaseRoot "MaintenanceTool.ps1")
+Copy-Item -Force (Join-Path $LauncherDir "$CliName.cmd") (Join-Path $ReleaseRoot "$CliName.cmd")
+Copy-Item -Force (Join-Path $LauncherDir "$CliName.ps1") (Join-Path $ReleaseRoot "$CliName.ps1")
 Copy-Item -Force (Join-Path $ProjectRoot "README.md") (Join-Path $ReleaseRoot "README.md")
 Copy-Item -Force (Join-Path $ProjectRoot "README.zh-CN.md") (Join-Path $ReleaseRoot "README.zh-CN.md")
 
@@ -75,11 +79,11 @@ if (Test-Path $InstallerScriptPath) {
     if ($null -ne $IsccCommand) {
         Push-Location $ProjectRoot
         try {
-            & $IsccCommand.Source "/DAppVersion=$Version" $InstallerScriptPath
+            & $IsccCommand.Source "/DAppVersion=$Version" "/DAppName=$ProductName" "/DAppExeName=$ProductExeName" "/DAppIconName=$ProductIconName" $InstallerScriptPath
             if ($LASTEXITCODE -ne 0) {
                 throw "Inno Setup compilation failed with exit code $LASTEXITCODE"
             }
-            $InstallerPath = Join-Path $DistRoot "MaintenanceTool-$VersionTag-$PlatformTag-setup.exe"
+            $InstallerPath = Join-Path $DistRoot "$ProductName-$VersionTag-$PlatformTag-setup.exe"
             if (Test-Path $SignScriptPath) {
                 & $SignScriptPath -Paths @($InstallerPath)
                 if ($LASTEXITCODE -ne 0) {
@@ -90,7 +94,7 @@ if (Test-Path $InstallerScriptPath) {
                 $InstallerSha256 = (Get-FileHash -Path $InstallerPath -Algorithm SHA256).Hash
                 $InstallerLeaf = Split-Path $InstallerPath -Leaf
                 $InstallerUrl = "https://github.com/Hotaru-suki/Maintenance-Tool/releases/download/$VersionTag/$InstallerLeaf"
-                $WingetManifestPath = Join-Path $DistRoot "MaintenanceTool-$VersionTag-$PlatformTag-winget.yaml"
+                $WingetManifestPath = Join-Path $DistRoot "$ProductName-$VersionTag-$PlatformTag-winget.yaml"
                 & $PythonExe $WingetManifestScriptPath `
                     --version $Version `
                     --installer-url $InstallerUrl `

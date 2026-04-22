@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from maintenancetool import __version__
+from maintenancetool.branding import PRODUCT_NAME
 from maintenancetool.release import APP_ISSUE_NEW_URL, APP_SUPPORT_EMAIL
 from maintenancetool.services.config import run_config_check_service
 from maintenancetool.services.results import FeedbackServiceResult
@@ -33,7 +34,7 @@ def run_feedback_service(
         include_config=include_config,
         state_dir=state_dir,
     )
-    subject = f"MaintenanceTool [{category.strip() or 'feedback'}] {title.strip()}"
+    subject = f"{PRODUCT_NAME} [{category.strip() or 'feedback'}] {title.strip()}"
     body = _build_feedback_body(details=details, diagnostics=diagnostics)
     issue_url = _build_issue_url(
         category=category,
@@ -87,7 +88,7 @@ def _build_diagnostics_payload(
 
     return {
         "tool": {
-            "name": "MaintenanceTool",
+            "name": PRODUCT_NAME,
             "version": __version__,
         },
         "feedback": {

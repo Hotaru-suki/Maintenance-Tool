@@ -5,14 +5,16 @@ import os
 import traceback
 import sys
 
+from maintenancetool.branding import PRODUCT_NAME
 from maintenancetool.core.runtime_paths import bootstrap_runtime_workspace
-from maintenancetool.cli.runtime import app as runtime_app
-from maintenancetool.cli.runtime import launch_default_launcher
 
 
 def run() -> None:
     _set_console_title()
     bootstrap_runtime_workspace()
+    from maintenancetool.cli.runtime import app as runtime_app
+    from maintenancetool.cli.runtime import launch_default_launcher
+
     if len(sys.argv) <= 1:
         launch_default_launcher()
         return
@@ -33,7 +35,7 @@ def _set_console_title() -> None:
     if os.name != "nt":
         return
     try:
-        ctypes.windll.kernel32.SetConsoleTitleW("MaintenanceTool")
+        ctypes.windll.kernel32.SetConsoleTitleW(PRODUCT_NAME)
     except Exception:
         return
 
@@ -42,7 +44,7 @@ def _pause_on_error() -> None:
     if not _should_pause_on_error():
         return
     try:
-        input("MaintenanceTool failed to start. Press Enter to exit...")
+        input(f"{PRODUCT_NAME} failed to start. Press Enter to exit...")
     except EOFError:
         return
 

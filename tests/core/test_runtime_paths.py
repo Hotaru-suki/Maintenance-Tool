@@ -26,6 +26,39 @@ def test_resolve_workspace_root_uses_documents_on_windows(monkeypatch, tmp_path:
     assert resolved == tmp_path / "UserProfile" / "Documents" / runtime_paths.APP_NAME
 
 
+def test_resolve_workspace_root_prefers_frozen_workspace_root_file(monkeypatch, tmp_path: Path) -> None:
+    install_dir = tmp_path / "MaintenanceTool"
+    install_dir.mkdir()
+    configured_root = tmp_path / "ToolData"
+    (install_dir / runtime_paths.WORKSPACE_ROOT_CONFIG_FILENAME).write_text(
+        str(configured_root),
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("MAINTENANCETOOL_WORKSPACE_ROOT", raising=False)
+    monkeypatch.setattr(runtime_paths.os, "name", "nt")
+    monkeypatch.setattr(runtime_paths.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(runtime_paths, "_resolve_executable_dir", lambda: install_dir)
+
+    resolved = runtime_paths._resolve_workspace_root()
+
+    assert resolved == configured_root.resolve()
+
+
+def test_resolve_workspace_root_prefers_frozen_portable_workspace_for_custom_install(monkeypatch, tmp_path: Path) -> None:
+    install_dir = tmp_path / "PortableMaintenanceTool"
+    install_dir.mkdir()
+
+    monkeypatch.delenv("MAINTENANCETOOL_WORKSPACE_ROOT", raising=False)
+    monkeypatch.setattr(runtime_paths.os, "name", "nt")
+    monkeypatch.setattr(runtime_paths.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(runtime_paths, "_resolve_executable_dir", lambda: install_dir)
+
+    resolved = runtime_paths._resolve_workspace_root()
+
+    assert resolved == (install_dir / "workspace").resolve()
+
+
 def test_resolve_windows_workspace_root_prefers_explicit_documents_root(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("MAINTENANCETOOL_DOCUMENTS_ROOT", str(tmp_path / "DocsRoot"))
     monkeypatch.setenv("USERPROFILE", str(tmp_path / "UserProfile"))

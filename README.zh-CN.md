@@ -1,89 +1,72 @@
 [English](README.md) | **简体中文**
 
-# MaintenanceTool
+# MyTool
 
 ## 产品简介
 
-`MaintenanceTool` 是一个面向 Windows 的轻量本地维护工具，用于安全、可回看、可确认地清理常见缓存与临时内容。
+`MyTool` 是一个面向 Windows 的轻量清理工具。
 
-它提供两种使用方式：
-- 普通用户模式：图形界面 / 引导式菜单
-- 高级用户模式：命令行直接操作
+它围绕一条主链路工作：
 
-## 主要功能
+`analyze -> review -> dryrun -> delete-safe / restore -> report`
 
-- `Analyze`：扫描并发现可学习、可清理的目标
-- `Review Pending`：审核学习建议，决定是否纳入规则
-- `Dry Run`：预览清理计划，不执行删除
-- `Delete Safe`：仅执行低风险、允许范围内的安全删除
-- `Restore`：恢复隔离区中的内容
-- `Check Updates`：打开最新版本下载页
-- `Feedback`：打开 GitHub Issue 反馈页，失败时回退到作者邮箱
+学习模型和安全模型都服务于“更安全、更准确地清理”，不是独立的主功能。
 
-## 如何下载
+## 核心功能
 
-普通用户推荐：
-- 打开 GitHub Releases 页面
-- 下载 Windows 安装包 `MaintenanceTool-v0.1.0-win-x64-setup.exe`
-- 安装后可任选以下方式启动：
-- 双击 `MaintenanceTool.exe` 进入终端交互界面
-- 打开新的终端后直接运行 `mtool`
+- `Analyze`：扫描当前发现根并找出清理候选
+- `Analyze Fixed`：只扫描固定目标，跳过全盘发现
+- `Review`：接受或拒绝新学习到的候选
+- `Dry Run`：预览将要清理的内容
+- `Delete Safe`：只删除低风险且允许的项目
+- `Restore`：从隔离区恢复内容
+- `Report`：查看配置、状态、报告和隔离区目录
+- `Update`：有新版本时打开最新发布页
 
-高级用户可选：
-- 下载便携版 `MaintenanceTool-v0.1.0-win-x64.zip`
-- 在包正式发布到 Windows Package Manager 社区仓库后，优先使用 `winget`
+## 下载
 
-## 如何使用
+- 安装版：从 GitHub Releases 下载 `MyTool-v0.1.0-win-x64-setup.exe`
+- 便携版：从 GitHub Releases 下载 `MyTool-v0.1.0-win-x64.zip`
+
+安装器说明：
+
+- 安装时会创建桌面和开始菜单入口
+- 安装时可选择配置、报告和运行数据目录
+- 卸载只移除程序本体；运行数据保留在你选择的数据目录中
+
+## 使用方式
 
 普通用户：
-1. 启动 `MaintenanceTool.exe` 或运行 `mtool`
-2. 先执行 `Analyze`
-3. 如有建议，执行 `Review Pending`
-4. 执行 `Dry Run`
-5. 确认后执行 `Delete Safe`
-6. 如有需要，使用 `Restore` 恢复
+
+1. 启动 `MyTool`
+2. 运行 `Analyze`
+3. 如果出现新的学习候选，运行 `Review`
+4. 运行 `Dry Run`
+5. 运行 `Delete Safe`
+6. 只有需要回滚时再用 `Restore`
 
 ## 高级用户操作指南
 
-常用命令：
+高级用户：
 
-```bash
-mtool
-mtool analyze --config-dir config --state-dir state
-mtool review-pending --config-dir config --state-dir state --accept-all
-mtool clean --config-dir config --report-dir reports --mode dry-run
-mtool clean --config-dir config --report-dir reports --mode quarantine --apply
-mtool clean --config-dir config --report-dir reports --mode delete --apply --interactive --confirm-delete DELETE
-mtool restore-quarantine --quarantine-dir .quarantine
-mtool config-check --config-dir config
-mtool check-update --state-dir state --open-browser
-mtool feedback --config-dir config --state-dir state --report-dir reports --category bug --title "..." --details "..."
-mtool verify-sandbox --sandbox-root <path>
+```powershell
+mytool
+mytool analyze
+mytool analyze --fixed-only
+mytool review --accept-all
+mytool clean --mode dry-run
+mytool clean --mode delete --apply --interactive --confirm-delete DELETE
+mytool restore --all
+mytool config-check
+mytool update --open-browser
 ```
 
 配置文件：
+
 - `config/fixedTargets.json`
 - `config/denyRules.json`
 - `config/discover.config.json`
 - `config/learning.config.json`
-
-Windows 打包版本默认将运行数据放在可见目录，例如 `Documents\MaintenanceTool`。
-
-高级用户更现代的安装方式：
-
-```powershell
-winget search MaintenanceTool
-```
-
-发布到 winget 社区仓库后，可直接从搜索结果中按正常 `winget` 流程安装。
-
-如果该包尚未发布到 winget 社区仓库，则继续使用 Release 安装器。
-
-从已下载的发布目录直接用本地 winget manifest 安装：
-
-```powershell
-winget install --manifest .\MaintenanceTool-v0.1.0-win-x64-winget.yaml
-```
 
 ## 版本
 

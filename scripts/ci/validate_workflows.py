@@ -33,7 +33,7 @@ def run_workflow_smoke_checks() -> list[ValidationCheck]:
         _check_file_exists("candidate workflow", WORKFLOW_ROOT / "candidate-build.yml"),
         _check_file_exists("release workflow", WORKFLOW_ROOT / "release.yml"),
         _check_file_exists("release build script", PROJECT_ROOT / "packaging" / "build-release.ps1"),
-        _check_file_exists("pyinstaller spec", PROJECT_ROOT / "packaging" / "pyinstaller" / "MaintenanceTool.spec"),
+        _check_file_exists("pyinstaller spec", PROJECT_ROOT / "packaging" / "pyinstaller" / "MyTool.spec"),
         _check_workflow_references(),
         _check_packaging_boundary(),
         _check_artifacts_help(),
@@ -75,9 +75,9 @@ def _check_workflow_references() -> ValidationCheck:
 def _check_packaging_boundary() -> ValidationCheck:
     from scripts.ci.workflow_policy import PACKAGING_REQUIRED_SNIPPETS
 
-    spec_path = PROJECT_ROOT / "packaging" / "pyinstaller" / "MaintenanceTool.spec"
+    spec_path = PROJECT_ROOT / "packaging" / "pyinstaller" / "MyTool.spec"
     build_script_path = PROJECT_ROOT / "packaging" / "build-release.ps1"
-    installer_script_path = PROJECT_ROOT / "packaging" / "installer" / "MaintenanceTool.iss"
+    installer_script_path = PROJECT_ROOT / "packaging" / "installer" / "MyTool.iss"
     missing: list[str] = []
     for path, label in (
         (spec_path, "spec"),

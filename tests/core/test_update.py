@@ -12,7 +12,7 @@ def test_get_update_status_writes_live_cache(monkeypatch, tmp_path: Path) -> Non
         latest_version="0.2.0",
         checked_at="2026-04-22T12:00:00Z",
         release_url="https://example.invalid/releases/latest",
-        installer_url="https://example.invalid/MaintenanceTool-v0.2.0-win-x64-setup.exe",
+        installer_url="https://example.invalid/MyTool-v0.2.0-win-x64-setup.exe",
         update_available=True,
         source="live",
         error=None,
@@ -70,11 +70,11 @@ def test_open_update_download_prefers_installer(monkeypatch) -> None:
         latest_version="0.1.1",
         checked_at="2026-04-22T12:00:00Z",
         release_url="https://example.invalid/releases/latest",
-        installer_url="https://example.invalid/MaintenanceTool-v0.1.1-win-x64-setup.exe",
+        installer_url="https://example.invalid/MyTool-v0.1.1-win-x64-setup.exe",
         update_available=True,
         source="live",
         error=None,
     )
 
     assert open_update_download(status) is True
-    assert opened == ["https://example.invalid/MaintenanceTool-v0.1.1-win-x64-setup.exe"]
+    assert opened == ["https://example.invalid/MyTool-v0.1.1-win-x64-setup.exe"]

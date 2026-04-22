@@ -16,9 +16,19 @@ def test_runtime_app_hides_verify_sandbox_command() -> None:
 def test_runtime_main_defaults_to_menu_when_no_args(monkeypatch) -> None:
     calls: list[str] = []
     monkeypatch.setattr(runtime_main, "bootstrap_runtime_workspace", lambda: calls.append("bootstrap"))
-    monkeypatch.setattr(runtime_main, "launch_default_launcher", lambda: calls.append("launcher"))
-    monkeypatch.setattr(runtime_main, "runtime_app", lambda: calls.append("app"))
-    monkeypatch.setattr(runtime_main.sys, "argv", ["MaintenanceTool.exe"])
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "maintenancetool.cli.runtime",
+        type(
+            "RuntimeModule",
+            (),
+            {
+                "launch_default_launcher": staticmethod(lambda: calls.append("launcher")),
+                "app": staticmethod(lambda: calls.append("app")),
+            },
+        )(),
+    )
+    monkeypatch.setattr(runtime_main.sys, "argv", ["MyTool.exe"])
 
     runtime_main.run()
 
@@ -28,9 +38,19 @@ def test_runtime_main_defaults_to_menu_when_no_args(monkeypatch) -> None:
 def test_runtime_main_uses_cli_when_args_present(monkeypatch) -> None:
     calls: list[str] = []
     monkeypatch.setattr(runtime_main, "bootstrap_runtime_workspace", lambda: calls.append("bootstrap"))
-    monkeypatch.setattr(runtime_main, "launch_default_launcher", lambda: calls.append("launcher"))
-    monkeypatch.setattr(runtime_main, "runtime_app", lambda: calls.append("app"))
-    monkeypatch.setattr(runtime_main.sys, "argv", ["MaintenanceTool.exe", "config-check"])
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "maintenancetool.cli.runtime",
+        type(
+            "RuntimeModule",
+            (),
+            {
+                "launch_default_launcher": staticmethod(lambda: calls.append("launcher")),
+                "app": staticmethod(lambda: calls.append("app")),
+            },
+        )(),
+    )
+    monkeypatch.setattr(runtime_main.sys, "argv", ["MyTool.exe", "config-check"])
 
     runtime_main.run()
 

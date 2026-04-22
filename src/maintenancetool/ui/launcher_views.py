@@ -6,6 +6,7 @@ from pathlib import Path
 from rich.console import Console
 
 from maintenancetool import __version__
+from maintenancetool.branding import PRODUCT_NAME
 from maintenancetool.core.discovery_roots import discover_root_summary
 from maintenancetool.services.update import UpdateStatus
 
@@ -19,9 +20,9 @@ def render_welcome(
     report_dir: Path,
     update_status: UpdateStatus | None = None,
 ) -> None:
-    mode = "advanced" if advanced_enabled else "standard"
-    console.print(f"MaintenanceTool v{__version__}")
-    console.print(f"mode: {mode}")
+    _ = advanced_enabled
+    _ = command_cards
+    console.print(f"{PRODUCT_NAME} v{__version__}")
     recent_actions = _build_recent_actions(state_path=state_path, report_dir=report_dir)
     console.print("recent:")
     if recent_actions:
@@ -32,10 +33,7 @@ def render_welcome(
     if update_status is not None and update_status.update_available:
         latest = update_status.latest_version or "unknown"
         console.print(f"update: v{latest} available")
-    console.print("type `/` for commands, `/status` for current state, `/exit` to quit")
-    console.print()
-    for card in command_cards:
-        console.print(card)
+    console.print("type `/` for commands")
 
 
 def build_command_match_cards(
@@ -44,18 +42,15 @@ def build_command_match_cards(
     query: str,
     advanced_enabled: bool,
 ) -> list[object]:
+    _ = advanced_enabled
     lines = [f"commands matching `{query}`"]
     if not commands:
         lines.append("- no matches")
         return ["\n".join(lines)]
 
-    selected = commands[0]
     for index, command in enumerate(commands[:8]):
         prefix = ">" if index == 0 else " "
-        visibility = " [advanced]" if command.advanced_only and advanced_enabled else ""
-        lines.append(f"{prefix} {command.name:<20} {command.description}{visibility}")
-    lines.append("")
-    lines.append(build_command_detail_panel(selected, advanced_enabled=advanced_enabled))
+        lines.append(f"{prefix} {command.name:<20} {command.description}")
     return ["\n".join(lines)]
 
 
@@ -105,13 +100,26 @@ def render_status_dashboard(
 
 def render_analyze_result(console: Console, *, result, fixed_targets, discover_config) -> None:
     root_summary = discover_root_summary(fixed_targets, discover_config)
+    discover_root_source = root_summary["discover_root_source"]
+    discover_root_count = root_summary["discover_root_count"]
+    if result.discover_mode == "fixed-only":
+        discover_root_source = "fixed-only"
+        discover_root_count = 0
     console.print("analyze")
-    console.print(f"- discover_root_source: {root_summary['discover_root_source']}")
-    console.print(f"- discover_root_count: {root_summary['discover_root_count']}")
+    console.print(f"- mode: {result.discover_mode}")
+    console.print(f"- discover_root_source: {discover_root_source}")
+    console.print(f"- discover_root_count: {discover_root_count}")
+    console.print(f"- scan_scope: {'active discover roots' if result.discover_mode == 'full' else 'fixed targets only'}")
+    if result.discover_mode == "full" and result.excluded_names:
+        console.print(f"- default_excludes: {', '.join(result.excluded_names[:8])}")
     console.print(f"- snapshot_entries: {len(result.entries)}")
     console.print(f"- pending_suggestions: {len(result.suggestions)}")
     console.print(f"- snapshot_path: {result.snapshot_path}")
     console.print(f"- pending_path: {result.pending_path}")
+    if result.discover_mode == "full" and result.discover_roots:
+        console.print("discover_roots")
+        for scope, root in result.discover_roots[:8]:
+            console.print(f"- [{scope}] {root}")
     if not result.suggestions:
         return
     grouped: dict[str, int] = {}
@@ -144,44 +152,6 @@ def render_cleanup_plan_summary(console: Console, *, title: str, result) -> None
                 f"- {item.path} | action={item.action} | risk={item.riskLevel} | allowed={'yes' if item.allowed else 'no'}"
             )
 
-
-def render_post_action_hint(
-    console: Console,
-    *,
-    primary: str,
-    aliases: tuple[str, ...] = (),
-    note: str,
-    alternate: str | None = None,
-    alternate_aliases: tuple[str, ...] = (),
-) -> None:
-    console.print("next")
-    console.print(f"- primary: {primary}")
-    console.print(f"- aliases: {', '.join(aliases) if aliases else '-'}")
-    console.print(f"- note: {note}")
-    if alternate is not None:
-        console.print(f"- alternate: {alternate}")
-        console.print(
-            f"- alternate_aliases: {', '.join(alternate_aliases) if alternate_aliases else '-'}"
-        )
-
-
-def build_command_detail_panel(command, *, advanced_enabled: bool) -> str:
-    mode_label = "advanced" if command.advanced_only else "standard"
-    hidden_note = " hidden_in_current_mode=true" if command.advanced_only and not advanced_enabled else ""
-    affects = ", ".join(command.affects) if command.affects else "read-only"
-    aliases = ", ".join(command.aliases) if command.aliases else "-"
-    return "\n".join(
-        [
-            f"selected: {command.name}",
-            f"description: {command.details or command.description}",
-            f"mode: {mode_label}{hidden_note}",
-            f"aliases: {aliases}",
-            f"affects: {affects}",
-            f"recommended_next: {command.recommended_next or '-'}",
-        ]
-    )
-
-
 def build_update_panel(update_status: UpdateStatus) -> str:
     status_line = "update available" if update_status.update_available else "up to date"
     latest_version = update_status.latest_version or "unknown"
@@ -195,7 +165,7 @@ def build_update_panel(update_status: UpdateStatus) -> str:
         f"- source: {update_status.source}",
     ]
     if update_status.update_available:
-        lines.append("- action: run `/check-update` to open the download page")
+        lines.append("- action: run `/update` to open the download page")
     elif update_status.error:
         lines.append(f"- error: {update_status.error}")
     return "\n".join(lines)

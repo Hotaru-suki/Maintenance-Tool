@@ -7,6 +7,7 @@ from typing import Any
 from maintenancetool.models.schemas import (
     CleanupExecutionResult,
     CleanupPlan,
+    DiscoverProgress,
     PendingState,
     PendingSuggestion,
     QuarantineRecord,
@@ -22,6 +23,10 @@ class AnalyzeServiceResult:
     pending_path: Path
     entries: list[SnapshotEntry]
     suggestions: list[PendingSuggestion]
+    discover_mode: str = "full"
+    discover_roots: list[tuple[str, str]] = field(default_factory=list)
+    excluded_names: list[str] = field(default_factory=list)
+    progress: list[DiscoverProgress] = field(default_factory=list)
     initial_discovery_ready: bool = False
 
 

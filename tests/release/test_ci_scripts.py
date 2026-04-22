@@ -80,7 +80,8 @@ def test_packaging_boundary_policy_mentions_release_assets_only() -> None:
     assert "config_templates" in joined
     assert "README.md" in joined
     assert "README.zh-CN.md" in joined
-    assert "MaintenanceTool.iss" in joined
+    assert "MyTool.iss" in joined
     assert "sign-release.ps1" in joined
     assert 'Get-Command "ISCC.exe"' in joined
     assert 'icon=str(icon_path)' in joined
+    assert "workspace-root.txt" in (Path("packaging/installer/MyTool.iss").read_text(encoding="utf-8"))

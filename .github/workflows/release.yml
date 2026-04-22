@@ -87,7 +87,6 @@ jobs:
             dist/*.zip
             dist/*-setup.exe
             dist/*-winget.yaml
-            artifacts/release-${{ github.run_id }}.zip
 
       - name: Cleanup transient artifacts
         if: always()
@@ -98,7 +97,7 @@ jobs:
             --path artifacts/release-${{ github.run_id }} `
             --path build `
             --path .pytest_cache `
-            --path dist/MaintenanceTool
+            --path dist/MyTool
 
       - name: Fail on pytest errors
         if: steps.pytest.outcome != 'success'

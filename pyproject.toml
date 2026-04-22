@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "maintenancetool"
+name = "mytool"
 version = "0.1.0"
-description = "Lightweight, non-black-box, configurable local cleanup tool"
+description = "Lightweight, reviewable local cleanup tool"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -21,10 +21,8 @@ dev = [
 ]
 
 [project.scripts]
- mtool = "maintenancetool.main:run"
- mtool-runtime = "maintenancetool.runtime_main:run"
-maintenancetool = "maintenancetool.main:run"
-maintenancetool-runtime = "maintenancetool.runtime_main:run"
+mytool = "maintenancetool.main:run"
+mytool-runtime = "maintenancetool.runtime_main:run"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

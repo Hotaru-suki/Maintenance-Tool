@@ -1,89 +1,72 @@
 **English** | [简体中文](README.zh-CN.md)
 
-# MaintenanceTool
+# MyTool
 
 ## Overview
 
-`MaintenanceTool` is a lightweight Windows local maintenance tool for safe, reviewable cleanup of common caches and temporary files.
+`MyTool` is a lightweight Windows cleanup tool.
 
-It provides two usage modes:
-- Ordinary user mode: GUI / guided menu
-- Advanced user mode: direct CLI
+It is built around one main flow:
 
-## Features
+`analyze -> review -> dryrun -> delete-safe / restore -> report`
 
-- `Analyze`: scan and discover learnable or removable targets
-- `Review Pending`: review learning suggestions before promotion
-- `Dry Run`: preview cleanup without deleting anything
-- `Delete Safe`: execute only low-risk cleanup actions
-- `Restore`: restore items from quarantine
-- `Check Updates`: open the latest release download page
-- `Feedback`: open a prefilled GitHub Issue page with email fallback
+Learning and safety rules exist to make cleanup safer and more accurate. They are not separate product goals.
+
+## What It Does
+
+- `Analyze`: scan current discover roots and find cleanup candidates
+- `Analyze Fixed`: scan only fixed targets and skip full discovery
+- `Review`: accept or reject newly learned candidates
+- `Dry Run`: preview what would be cleaned
+- `Delete Safe`: delete only low-risk allowed items
+- `Restore`: recover items from quarantine
+- `Report`: open runtime folders for config, state, reports, and quarantine
+- `Update`: open the latest release page when a newer version exists
 
 ## Download
 
-Recommended for ordinary users:
-- Open the GitHub Releases page
-- Download the Windows installer `MaintenanceTool-v0.1.0-win-x64-setup.exe`
-- Install it and then either:
-- double-click `MaintenanceTool.exe` to enter the terminal interface
-- open a new terminal and run `mtool`
+- Installer: download `MyTool-v0.1.0-win-x64-setup.exe` from GitHub Releases
+- Portable: download `MyTool-v0.1.0-win-x64.zip` from GitHub Releases
 
-Optional for advanced users:
-- Download the portable package `MaintenanceTool-v0.1.0-win-x64.zip`
-- Prefer `winget` after the package is published to the Windows Package Manager community repository
+Installer notes:
 
-## Usage
+- setup creates desktop and Start Menu entries
+- setup lets you choose the data folder for config, reports, and runtime state
+- uninstall removes the installed app; runtime data stays in the folder you selected
+
+## Use
 
 Ordinary users:
-1. Launch `MaintenanceTool.exe` or run `mtool`
-2. Start with `Analyze`
-3. If suggestions appear, use `Review Pending`
+
+1. Launch `MyTool`
+2. Run `Analyze`
+3. If new learned candidates appear, run `Review`
 4. Run `Dry Run`
-5. Confirm and continue with `Delete Safe`
-6. Use `Restore` if rollback is needed
+5. Run `Delete Safe`
+6. Use `Restore` only if rollback is needed
 
 ## Advanced User Guide
 
-Common commands:
+Advanced users:
 
-```bash
-mtool
-mtool analyze --config-dir config --state-dir state
-mtool review-pending --config-dir config --state-dir state --accept-all
-mtool clean --config-dir config --report-dir reports --mode dry-run
-mtool clean --config-dir config --report-dir reports --mode quarantine --apply
-mtool clean --config-dir config --report-dir reports --mode delete --apply --interactive --confirm-delete DELETE
-mtool restore-quarantine --quarantine-dir .quarantine
-mtool config-check --config-dir config
-mtool check-update --state-dir state --open-browser
-mtool feedback --config-dir config --state-dir state --report-dir reports --category bug --title "..." --details "..."
-mtool verify-sandbox --sandbox-root <path>
+```powershell
+mytool
+mytool analyze
+mytool analyze --fixed-only
+mytool review --accept-all
+mytool clean --mode dry-run
+mytool clean --mode delete --apply --interactive --confirm-delete DELETE
+mytool restore --all
+mytool config-check
+mytool update --open-browser
 ```
 
-Configuration files:
+Configuration:
+
 - `config/fixedTargets.json`
 - `config/denyRules.json`
 - `config/discover.config.json`
 - `config/learning.config.json`
-
-Packaged Windows builds keep mutable runtime data in a visible folder such as `Documents\MaintenanceTool`.
-
-Modern install options for advanced users:
-
-```powershell
-winget search MaintenanceTool
-```
-
-After the package is published to the winget community repository, install it from the search result in the usual `winget` flow.
-
-If the package has not been published to the winget community repository yet, use the release installer directly.
-
-Local winget manifest install from a downloaded release directory:
-
-```powershell
-winget install --manifest .\MaintenanceTool-v0.1.0-win-x64-winget.yaml
-```
 
 ## Version
 
