@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -111,7 +112,12 @@ def run_launcher(console: Console, *, config_dir: str, state_dir: str, report_di
 
 
 def supports_prompt_toolkit_launcher() -> bool:
-    return importlib.util.find_spec("prompt_toolkit") is not None
+    if importlib.util.find_spec("prompt_toolkit") is None:
+        return False
+    try:
+        return sys.stdin.isatty() and sys.stdout.isatty()
+    except Exception:
+        return False
 
 
 def build_launcher_commands() -> list[LauncherCommand]:
