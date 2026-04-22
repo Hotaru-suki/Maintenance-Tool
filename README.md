@@ -25,8 +25,8 @@ Learning and safety rules exist to make cleanup safer and more accurate. They ar
 
 ## Download
 
-- Installer: download `MyTool-v0.1.0-win-x64-setup.exe` from GitHub Releases
-- Portable: download `MyTool-v0.1.0-win-x64.zip` from GitHub Releases
+- Installer: download `MyTool-v0.1.1-win-x64-setup.exe` from GitHub Releases
+- Portable: download `MyTool-v0.1.1-win-x64.zip` from GitHub Releases
 
 Installer notes:
 
@@ -70,4 +70,4 @@ Configuration:
 
 ## Version
 
-- `v0.1.0`
+- `v0.1.1`

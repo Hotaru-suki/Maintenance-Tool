@@ -25,8 +25,8 @@
 
 ## 下载
 
-- 安装版：从 GitHub Releases 下载 `MyTool-v0.1.0-win-x64-setup.exe`
-- 便携版：从 GitHub Releases 下载 `MyTool-v0.1.0-win-x64.zip`
+- 安装版：从 GitHub Releases 下载 `MyTool-v0.1.1-win-x64-setup.exe`
+- 便携版：从 GitHub Releases 下载 `MyTool-v0.1.1-win-x64.zip`
 
 安装器说明：
 
@@ -70,4 +70,4 @@ mytool update --open-browser
 
 ## 版本
 
-- `v0.1.0`
+- `v0.1.1`
