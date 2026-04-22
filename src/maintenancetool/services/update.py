@@ -5,7 +5,7 @@ import urllib.error
 import urllib.request
 import webbrowser
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from maintenancetool.release import (
@@ -17,6 +17,7 @@ from maintenancetool.release import (
 
 UPDATE_CACHE_FILENAME = "update-state.json"
 UPDATE_CHECK_TTL = timedelta(hours=24)
+UTC = timezone.utc
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,5 +1,7 @@
-from pathlib import Path
+import os
 from pathlib import PureWindowsPath
+
+import pytest
 
 from maintenancetool.core import path_adapter
 
@@ -13,8 +15,8 @@ def test_resolve_local_path_maps_windows_path_to_mnt_in_wsl(monkeypatch) -> None
 
 
 def test_resolve_local_path_keeps_windows_path_on_native_windows(monkeypatch) -> None:
-    monkeypatch.setattr(path_adapter.os, "name", "nt")
-    monkeypatch.setattr(path_adapter, "_is_wsl_environment", lambda: False)
+    if os.name != "nt":
+        pytest.skip("native Windows path semantics require a Windows runtime")
 
     resolved = path_adapter.resolve_local_path("C:\\Users\\Alice\\Cache", scope="windows")
 
@@ -22,8 +24,7 @@ def test_resolve_local_path_keeps_windows_path_on_native_windows(monkeypatch) ->
 
 
 def test_resolve_local_path_keeps_windows_path_on_non_wsl_posix(monkeypatch) -> None:
-    monkeypatch.setattr(path_adapter.os, "name", "posix")
-    monkeypatch.setattr(path_adapter, "_is_wsl_environment", lambda: False)
+    monkeypatch.setattr(path_adapter, "_should_translate_windows_path", lambda: False)
 
     resolved = path_adapter.resolve_local_path("C:\\Users\\Alice\\Cache", scope="windows")
 
