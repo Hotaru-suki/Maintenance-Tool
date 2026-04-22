@@ -1,0 +1,44 @@
+{
+  "defaultDepth": 1,
+  "maxDepth": 2,
+  "topN": 20,
+  "minBytes": 1,
+  "scopePolicies": {},
+  "pathOverrides": [
+    {
+      "path": "%LOCALAPPDATA%\\Temp",
+      "scopeHint": "windows",
+      "maxDepth": 2,
+      "topN": 20,
+      "category": "temp"
+    },
+    {
+      "path": "%LOCALAPPDATA%\\Microsoft\\Windows\\INetCache",
+      "scopeHint": "windows",
+      "maxDepth": 2,
+      "topN": 20,
+      "category": "cache"
+    },
+    {
+      "path": "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Cache",
+      "scopeHint": "windows",
+      "maxDepth": 2,
+      "topN": 20,
+      "category": "browser-cache"
+    },
+    {
+      "path": "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\Default\\Cache",
+      "scopeHint": "windows",
+      "maxDepth": 2,
+      "topN": 20,
+      "category": "browser-cache"
+    },
+    {
+      "path": "%APPDATA%\\Code\\logs",
+      "scopeHint": "windows",
+      "maxDepth": 2,
+      "topN": 20,
+      "category": "logs"
+    }
+  ]
+}

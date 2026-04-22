@@ -1,0 +1,97 @@
+name: Candidate Build
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  windows-candidate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+          python -m pip install pyinstaller
+          choco install innosetup --no-progress -y
+
+      - name: Validate workflow smoke checks
+        shell: pwsh
+        run: |
+          python scripts/ci/validate_workflows.py
+
+      - name: Run validation suite
+        id: pytest
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python scripts/ci/cleanup_test_artifacts.py --path artifacts --path build --path dist
+          New-Item -ItemType Directory -Force -Path artifacts/raw | Out-Null
+          pytest -q --junitxml=artifacts/raw/junit.xml
+
+      - name: Build release candidate
+        if: steps.pytest.outcome == 'success'
+        shell: pwsh
+        run: |
+          ./packaging/build-release.ps1 -PythonExe python -PlatformTag win-x64
+
+      - name: Build candidate artifact bundle
+        if: always()
+        shell: pwsh
+        run: |
+          python scripts/ci/collect_test_artifacts.py `
+            --output-root artifacts `
+            --bundle-name candidate-${{ github.run_id }} `
+            --workflow candidate-build `
+            --run-id ${{ github.run_id }} `
+            --sha ${{ github.sha }} `
+            --ref-name ${{ github.ref_name }} `
+            --pytest-status ${{ steps.pytest.outcome }} `
+            --junit artifacts/raw/junit.xml `
+            --dist-dir dist `
+            --note windows-candidate-build
+
+      - name: Upload candidate bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-${{ github.run_id }}
+          path: artifacts/candidate-${{ github.run_id }}.zip
+
+      - name: Upload release candidate package
+        if: steps.pytest.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate-${{ github.run_id }}
+          path: |
+            dist/*.zip
+            dist/*-setup.exe
+            dist/*-winget.yaml
+
+      - name: Cleanup transient artifacts
+        if: always()
+        shell: pwsh
+        run: |
+          python scripts/ci/cleanup_test_artifacts.py `
+            --path artifacts/raw `
+            --path artifacts/candidate-${{ github.run_id }} `
+            --path build `
+            --path .pytest_cache `
+            --path dist/MaintenanceTool
+
+      - name: Fail on pytest errors
+        if: steps.pytest.outcome != 'success'
+        shell: pwsh
+        run: |
+          throw "pytest failed"

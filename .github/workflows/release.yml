@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+          python -m pip install pyinstaller
+          choco install innosetup --no-progress -y
+
+      - name: Validate workflow smoke checks
+        shell: pwsh
+        run: |
+          python scripts/ci/validate_workflows.py
+
+      - name: Validate tag version
+        shell: pwsh
+        run: |
+          $TagVersion = "${{ github.ref_name }}".TrimStart('v')
+          $ProjectVersion = python -c "from pathlib import Path; import re; text=Path('pyproject.toml').read_text(encoding='utf-8'); print(re.search(r'^version = \"([^\"]+)\"', text, re.M).group(1))"
+          if ($TagVersion -ne $ProjectVersion) {
+            throw "Tag version $TagVersion does not match pyproject version $ProjectVersion"
+          }
+
+      - name: Run validation suite
+        id: pytest
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python scripts/ci/cleanup_test_artifacts.py --path artifacts --path build --path dist
+          New-Item -ItemType Directory -Force -Path artifacts/raw | Out-Null
+          pytest -q --junitxml=artifacts/raw/junit.xml
+
+      - name: Build release package
+        if: steps.pytest.outcome == 'success'
+        shell: pwsh
+        run: |
+          ./packaging/build-release.ps1 -PythonExe python -PlatformTag win-x64
+
+      - name: Build release validation bundle
+        if: always()
+        shell: pwsh
+        run: |
+          python scripts/ci/collect_test_artifacts.py `
+            --output-root artifacts `
+            --bundle-name release-${{ github.run_id }} `
+            --workflow release `
+            --run-id ${{ github.run_id }} `
+            --sha ${{ github.sha }} `
+            --ref-name ${{ github.ref_name }} `
+            --pytest-status ${{ steps.pytest.outcome }} `
+            --junit artifacts/raw/junit.xml `
+            --dist-dir dist `
+            --note windows-release-validation
+
+      - name: Publish GitHub release
+        if: steps.pytest.outcome == 'success'
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/*.zip
+            dist/*-setup.exe
+            dist/*-winget.yaml
+            artifacts/release-${{ github.run_id }}.zip
+
+      - name: Cleanup transient artifacts
+        if: always()
+        shell: pwsh
+        run: |
+          python scripts/ci/cleanup_test_artifacts.py `
+            --path artifacts/raw `
+            --path artifacts/release-${{ github.run_id }} `
+            --path build `
+            --path .pytest_cache `
+            --path dist/MaintenanceTool
+
+      - name: Fail on pytest errors
+        if: steps.pytest.outcome != 'success'
+        shell: pwsh
+        run: |
+          throw "pytest failed"
