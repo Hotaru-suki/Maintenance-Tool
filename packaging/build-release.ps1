@@ -16,7 +16,6 @@ $WingetManifestScriptPath = Join-Path $ProjectRoot "scripts\packaging\generate_w
 $TemplateDir = Join-Path $ProjectRoot "packaging\config_templates"
 $LauncherDir = Join-Path $ProjectRoot "launcher"
 $DistAppRoot = Join-Path $DistRoot "MaintenanceTool"
-$VersionTag = "v$Version"
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $PyprojectPath = Join-Path $ProjectRoot "pyproject.toml"
@@ -27,6 +26,8 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
     }
     $Version = $VersionMatch.Groups[1].Value
 }
+
+$VersionTag = "v$Version"
 
 Push-Location $ProjectRoot
 try {
