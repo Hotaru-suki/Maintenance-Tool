@@ -9,8 +9,9 @@ ScopeName = Literal["windows", "wsl"]
 ScopeHint = Literal["windows", "wsl", "auto"]
 DeleteMode = Literal["contents", "directory"]
 TargetSource = Literal["manual", "learned"]
-PendingAction = Literal["addFixedTarget", "retireFixedTarget"]
+PendingAction = Literal["addFixedTarget", "addReviewTarget", "addDenyRule", "retireFixedTarget"]
 RiskLevel = Literal["low", "medium", "high"]
+TargetListKind = Literal["safe", "review"]
 
 
 class FixedTarget(BaseModel):
@@ -128,6 +129,8 @@ class SnapshotEntry(BaseModel):
     hitRuleReason: str | None = None
     depth: int = Field(default=0, ge=0)
     sourceRootId: str | None = None
+    suggestedAction: PendingAction | None = None
+    blockedReason: str | None = None
 
 
 class DiscoverProgress(BaseModel):
@@ -215,6 +218,7 @@ class CleanupPlanItem(BaseModel):
     targetId: str
     path: str
     scope: ScopeName
+    listKind: TargetListKind
     deleteMode: DeleteMode
     category: str | None = None
     sizeBytes: int = Field(ge=0)
@@ -257,8 +261,9 @@ class QuarantineRecord(BaseModel):
     sizeBytes: int = Field(default=0, ge=0)
     sourceName: str = Field(min_length=1)
     quarantinedAt: str
-    status: Literal["active", "restored"] = "active"
+    status: Literal["active", "restored", "deleted"] = "active"
     restoredAt: str | None = None
+    deletedAt: str | None = None
 
 
 class RestoreExecutionItem(BaseModel):

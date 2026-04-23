@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from maintenancetool.core.scope import normalize_path, resolve_scope
 from maintenancetool.models.schemas import (
+    DenyRule,
     FixedTarget,
     LearningConfig,
     LearningDecisionEntry,
@@ -17,6 +18,8 @@ from maintenancetool.models.schemas import (
 def build_pending_suggestions(
     *,
     fixed_targets: list[FixedTarget],
+    review_targets: list[FixedTarget] | None = None,
+    deny_rules: list[DenyRule] | None = None,
     current_entries: list[SnapshotEntry],
     previous_state: SnapshotState | None,
     decision_index: dict[tuple[str, str, str], LearningDecisionEntry] | None = None,
@@ -26,12 +29,21 @@ def build_pending_suggestions(
     suggestions: list[PendingSuggestion] = []
     created_at = _utc_now()
     candidate_suggestions: list[PendingSuggestion] = []
+    review_targets = review_targets or []
+    deny_rules = deny_rules or []
     known_target_paths = {
         (
             resolve_scope(target.path, target.scopeHint),
             normalize_path(target.path, resolve_scope(target.path, target.scopeHint)),
         )
-        for target in fixed_targets
+        for target in [*fixed_targets, *review_targets]
+    }
+    known_deny_paths = {
+        (
+            resolve_scope(rule.path, rule.scopeHint),
+            normalize_path(rule.path, resolve_scope(rule.path, rule.scopeHint)),
+        )
+        for rule in deny_rules
     }
     previous_entries = {
         (entry.scope, normalize_path(entry.path, entry.scope)): entry
@@ -40,7 +52,7 @@ def build_pending_suggestions(
 
     for entry in current_entries:
         key = (entry.scope, normalize_path(entry.path, entry.scope))
-        if key in known_target_paths:
+        if key in known_target_paths or key in known_deny_paths:
             continue
         if entry.sizeBytes < learning_config.newItemPolicy.minBytes:
             continue
@@ -61,21 +73,23 @@ def build_pending_suggestions(
         if not learning_config.newItemPolicy.promoteNewPaths:
             continue
 
-        reason = (
-            f"new candidate discovered under {entry.sourceRootId or 'unknown root'} "
-            f"({entry.sizeBytes} bytes)"
-            if is_new
-            else (
-                "candidate size changed significantly "
-                f"from {previous.sizeBytes} to {entry.sizeBytes} bytes"
-            )
+        action = _suggested_action_for_entry(
+            entry=entry,
+            changed=changed,
+            learning_config=learning_config,
+        )
+        reason = _candidate_reason(
+            entry=entry,
+            previous=previous,
+            is_new=is_new,
+            action=action,
         )
         candidate_suggestions.append(
             PendingSuggestion(
-                id=_suggestion_id("addFixedTarget", entry.path, entry.scope),
+                id=_suggestion_id(action, entry.path, entry.scope),
                 path=entry.path,
                 scope=entry.scope,
-                suggestedAction="addFixedTarget",
+                suggestedAction=action,
                 reason=reason,
                 category=entry.category,
                 hitRule=entry.hitRule,
@@ -127,6 +141,45 @@ def build_pending_suggestions(
     return _filter_suppressed_suggestions(deduped, decision_index or {})
 
 
+def _candidate_reason(
+    *,
+    entry: SnapshotEntry,
+    previous: SnapshotEntry | None,
+    is_new: bool,
+    action: str,
+) -> str:
+    base = (
+        f"new candidate discovered under {entry.sourceRootId or 'unknown root'} ({entry.sizeBytes} bytes)"
+        if is_new
+        else f"candidate size changed significantly from {previous.sizeBytes} to {entry.sizeBytes} bytes"
+    )
+    if action == "addFixedTarget":
+        return f"{base}; classified as safe cache/log residue"
+    if action == "addReviewTarget":
+        if not is_new:
+            return f"{base}; classified for review because growth exceeded policy thresholds"
+        if entry.suggestedAction == "addFixedTarget":
+            return f"{base}; classified for review because size exceeds manual review threshold"
+        return f"{base}; classified as review-required stateful cache or large candidate"
+    if action == "addDenyRule":
+        detail = entry.blockedReason or "candidate is not safe to promote"
+        return f"{base}; classified as deny rule because {detail}"
+    return base
+
+
+def _suggested_action_for_entry(
+    *,
+    entry: SnapshotEntry,
+    changed: bool,
+    learning_config: LearningConfig,
+) -> str:
+    if entry.suggestedAction == "addDenyRule":
+        return "addDenyRule"
+    if changed or entry.sizeBytes >= learning_config.safetyPolicy.requireManualConfirmAboveBytes:
+        return "addReviewTarget"
+    return entry.suggestedAction or "addReviewTarget"
+
+
 def dedupe_suggestions(
     suggestions: list[PendingSuggestion],
 ) -> list[PendingSuggestion]:
@@ -142,9 +195,15 @@ def _filter_suppressed_suggestions(
     decision_index: dict[tuple[str, str, str], LearningDecisionEntry],
 ) -> list[PendingSuggestion]:
     filtered: list[PendingSuggestion] = []
+    decision_by_path = {
+        (entry.scope, entry.path): entry
+        for entry in decision_index.values()
+    }
     for suggestion in suggestions:
         key = (suggestion.suggestedAction, suggestion.scope, suggestion.path)
         decision = decision_index.get(key)
+        if decision is None:
+            decision = decision_by_path.get((suggestion.scope, suggestion.path))
         if decision is None:
             filtered.append(suggestion)
             continue

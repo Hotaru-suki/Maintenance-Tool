@@ -55,9 +55,9 @@ def analyze_next_step(*, has_suggestions: bool, reviewed_now: bool) -> NextStepS
 def dryrun_next_step(*, has_safe_candidates: bool, has_any_candidates: bool) -> NextStepSpec:
     if has_safe_candidates:
         return NextStepSpec(
-            primary="/delete-safe",
-            aliases=("/del", "/ds"),
-            note="Low-risk cleanup targets are available. Continue to safe delete or inspect /report.",
+            primary="/stage",
+            aliases=("/st",),
+            note="Safe fixed targets are available. Stage them first so they can still be restored.",
             alternate="/report",
             alternate_aliases=("/rep",),
         )
@@ -83,14 +83,14 @@ def restore_next_step(*, has_records: bool) -> NextStepSpec:
         return NextStepSpec(
             primary="/report",
             aliases=("/rep",),
-            note="Active quarantine records are available. Inspect restore reports or return to cleanup preview if you need another pass.",
+            note="Active staged records are available. Inspect restore reports or return to cleanup preview if you need another pass.",
             alternate="/dryrun",
             alternate_aliases=("/d", "/dr"),
         )
     return NextStepSpec(
         primary="/dryrun",
         aliases=("/d", "/dr"),
-        note="No active quarantine records were found. Return to cleanup preview to generate the next action set.",
+        note="No active staged records were found. Return to cleanup preview to generate the next action set.",
         alternate="/report",
         alternate_aliases=("/rep",),
     )
@@ -103,12 +103,12 @@ def delete_safe_next_step(*, has_safe_candidates: bool) -> NextStepSpec:
             aliases=("/rep",),
             note="Inspect the current reports, or run /dryrun again after config changes.",
             alternate="/restore",
-            alternate_aliases=("/res", "/restore-quarantine"),
+            alternate_aliases=("/res",),
         )
     return NextStepSpec(
         primary="/dryrun",
         aliases=("/d", "/dr"),
-        note="No immediately safe delete candidates were available. Re-check the preview or inspect reports.",
+        note="No immediately safe staging candidates were available. Re-check the preview or inspect reports.",
         alternate="/report",
         alternate_aliases=("/rep",),
     )
@@ -117,9 +117,9 @@ def delete_safe_next_step(*, has_safe_candidates: bool) -> NextStepSpec:
 def advanced_dryrun_next_step(*, has_allowed_candidates: bool) -> NextStepSpec:
     if has_allowed_candidates:
         return NextStepSpec(
-            primary="/advanced-quarantine",
-            aliases=("/aq",),
-            note="Advanced preview is ready. Quarantine is the next controlled action.",
+            primary="/stage",
+            aliases=("/st",),
+            note="Preview is ready. Stage is the next controlled action.",
             alternate="/report",
             alternate_aliases=("/rep",),
         )
@@ -136,15 +136,15 @@ def advanced_quarantine_next_step(*, has_allowed_candidates: bool) -> NextStepSp
     if has_allowed_candidates:
         return NextStepSpec(
             primary="/restore",
-            aliases=("/res", "/restore-quarantine"),
-            note="If items are later quarantined, restore remains the rollback path.",
+            aliases=("/res",),
+            note="If items are later staged, restore remains the rollback path.",
             alternate="/report",
             alternate_aliases=("/rep",),
         )
     return NextStepSpec(
         primary="/report",
         aliases=("/rep",),
-        note="No allowed quarantine candidates were produced. Inspect reports before attempting another advanced pass.",
+        note="No allowed staging candidates were produced. Inspect reports before attempting another advanced pass.",
         alternate="/advanced-dryrun",
         alternate_aliases=("/adr",),
     )

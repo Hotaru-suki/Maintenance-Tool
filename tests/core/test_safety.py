@@ -1,5 +1,5 @@
-from maintenancetool.core.safety import evaluate_target, iter_effective_deny_rules
-from maintenancetool.models.schemas import DenyRule, SafetyPolicy
+from maintenancetool.core.safety import evaluate_fixed_target, evaluate_target, iter_effective_deny_rules
+from maintenancetool.models.schemas import DenyRule, FixedTarget, SafetyPolicy
 
 
 def test_evaluate_target_rejects_windows_system_directory_without_user_deny_rules() -> None:
@@ -72,3 +72,19 @@ def test_evaluate_target_allows_path_within_allowed_roots() -> None:
 
     assert decision.allow_scan is True
     assert decision.reason == "allowed"
+
+
+def test_evaluate_fixed_target_preserves_block_reason_for_denied_learned_target() -> None:
+    decision = evaluate_fixed_target(
+        FixedTarget(
+            id="learned-windows-temp",
+            path="C:\\Windows\\Temp",
+            scopeHint="windows",
+            source="learned",
+        ),
+        deny_rules=[],
+        safety_policy=SafetyPolicy(requireManualConfirmForLearnedTargets=True),
+    )
+
+    assert decision.allow_scan is False
+    assert decision.reason == "matched deny rule: system-root"

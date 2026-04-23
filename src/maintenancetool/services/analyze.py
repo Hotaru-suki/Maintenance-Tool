@@ -31,18 +31,19 @@ def run_analyze_service(
     local_path_resolver: LocalPathResolver = resolve_local_path,
 ) -> AnalyzeServiceResult:
     configs = load_all_configs(config_path)
+    managed_targets = [*configs["fixedTargets"], *configs["reviewTargets"]]
     snapshot_path = state_path / "lastSnapshot.json"
     pending_path = state_path / "pending.json"
     learning_decisions_path = state_path / "learningDecisions.json"
     previous_state = load_snapshot_state(snapshot_path)
     learning_decisions = load_learning_decision_state(learning_decisions_path)
     discover_roots = (
-        resolve_discover_roots(configs["fixedTargets"], configs["discover"])
+        resolve_discover_roots(managed_targets, configs["discover"])
         if discover_mode == "full"
         else []
     )
     current_entries, progress = collect_snapshot_entries(
-        fixed_targets=configs["fixedTargets"],
+        fixed_targets=managed_targets,
         deny_rules=configs["denyRules"],
         discover_config=configs["discover"],
         include_discovery=discover_mode == "full",
@@ -50,7 +51,7 @@ def run_analyze_service(
         local_path_resolver=local_path_resolver,
     )
     missing_counts = compute_missing_counts(
-        configs["fixedTargets"],
+        managed_targets,
         current_entries,
         previous_state,
     )
@@ -60,13 +61,15 @@ def run_analyze_service(
         else datetime.now(timezone.utc).isoformat()
     )
     last_seen_at = compute_last_seen_at(
-        configs["fixedTargets"],
+        managed_targets,
         current_entries,
         previous_state,
         collected_at=collected_at,
     )
     suggestions = build_pending_suggestions(
         fixed_targets=configs["fixedTargets"],
+        review_targets=configs["reviewTargets"],
+        deny_rules=configs["denyRules"],
         current_entries=current_entries,
         previous_state=previous_state,
         decision_index=build_decision_index(learning_decisions),

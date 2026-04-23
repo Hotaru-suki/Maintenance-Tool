@@ -63,7 +63,7 @@ def run_config_check_service(config_path: Path) -> ConfigCheckServiceResult:
     if summary is not None:
         summary.update(
             discover_root_summary(
-                configs["fixedTargets"],
+                [*configs["fixedTargets"], *configs["reviewTargets"]],
                 configs["discover"],
             )
         )
@@ -84,8 +84,10 @@ def _summary_to_dict(summary) -> dict[str, object] | None:
     return {
         "profile": summary.profile,
         "fixed_targets_count": summary.fixed_targets_count,
+        "review_targets_count": summary.review_targets_count,
         "deny_rules_count": summary.deny_rules_count,
         "enabled_fixed_targets": summary.enabled_fixed_targets,
+        "enabled_review_targets": summary.enabled_review_targets,
         "enabled_deny_rules": summary.enabled_deny_rules,
         "scope_hints": summary.scope_hints,
     }

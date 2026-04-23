@@ -25,6 +25,10 @@ from maintenancetool.models.schemas import (
 )
 
 
+SAFE_DISCOVERY_CATEGORIES = {"temp", "logs"}
+REVIEW_DISCOVERY_CATEGORIES = {"browser-cache", "cache"}
+
+
 def load_snapshot_state(path: Path) -> SnapshotState | None:
     if not path.exists():
         return None
@@ -151,6 +155,12 @@ def _collect_discover_entries(
             key = (scope, candidate_path)
             if key in covered:
                 continue
+            hit = match_discovery_candidate(
+                logical_path=candidate_path,
+                root_category=_override_category(discover_config, scope, root),
+            )
+            if not hit.matched:
+                continue
             decision = evaluate_target(
                 candidate_path,
                 deny_rules=deny_rules,
@@ -158,17 +168,14 @@ def _collect_discover_entries(
                 local_path_resolver=local_path_resolver,
                 safety_policy=safety_policy,
             )
-            if not decision.allow_promote:
-                continue
-            hit = match_discovery_candidate(
-                logical_path=candidate_path,
-                root_category=_override_category(discover_config, scope, root),
-            )
-            if not hit.matched:
-                continue
             size_bytes = _measure_path(candidate, max_depth=max_depth)
             if size_bytes < min_bytes:
                 continue
+            suggested_action, blocked_reason = _classify_discovery_candidate(
+                category=hit.category,
+                decision_reason=decision.reason,
+                allow_promote=decision.allow_promote,
+            )
             candidates.append(
                 SnapshotEntry(
                     path=candidate_path,
@@ -181,6 +188,8 @@ def _collect_discover_entries(
                     hitRuleReason=hit.reason,
                     depth=_depth_from_root(root_path, candidate),
                     sourceRootId=root,
+                    suggestedAction=suggested_action,
+                    blockedReason=blocked_reason,
                 )
             )
 
@@ -188,6 +197,21 @@ def _collect_discover_entries(
         results.extend(candidates[:top_n])
 
     return results, progress
+
+
+def _classify_discovery_candidate(
+    *,
+    category: str | None,
+    decision_reason: str,
+    allow_promote: bool,
+) -> tuple[str, str | None]:
+    if not allow_promote:
+        return "addDenyRule", decision_reason
+    if category in SAFE_DISCOVERY_CATEGORIES:
+        return "addFixedTarget", None
+    if category in REVIEW_DISCOVERY_CATEGORIES:
+        return "addReviewTarget", None
+    return "addReviewTarget", None
 
 
 def _iter_candidate_directories(root: Path, max_depth: int, excluded_names: set[str]) -> list[Path]:

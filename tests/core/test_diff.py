@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from maintenancetool.core.diff import (
     build_pending_suggestions,
@@ -15,6 +15,10 @@ from maintenancetool.models.schemas import (
 
 def iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def iso_days_ago(days: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
 
 def test_build_pending_suggestions_for_new_candidate() -> None:
@@ -48,7 +52,7 @@ def test_build_pending_suggestions_for_new_candidate() -> None:
     )
 
     assert len(suggestions) == 1
-    assert suggestions[0].suggestedAction == "addFixedTarget"
+    assert suggestions[0].suggestedAction == "addReviewTarget"
     assert suggestions[0].path == "/sandbox/new-candidate"
     assert "new candidate discovered under /sandbox" in suggestions[0].reason
 
@@ -137,10 +141,10 @@ def test_build_pending_suggestions_respects_grouping_policy_scope_and_category()
 def test_build_pending_suggestions_respects_last_seen_age_days() -> None:
     learning = LearningConfig(stalePolicy={"missingCountThreshold": 2, "lastSeenAgeDays": 3, "suggestOnly": True})
     previous_state = SnapshotState(
-        collectedAt="2026-04-21T00:00:00+00:00",
+        collectedAt=iso_days_ago(1),
         entries=[],
         missingCounts={"gone": 1},
-        lastSeenAt={"gone": "2026-04-20T00:00:00+00:00"},
+        lastSeenAt={"gone": iso_days_ago(2)},
     )
 
     suggestions = build_pending_suggestions(
@@ -188,7 +192,34 @@ def test_build_pending_suggestions_reports_size_change_reason() -> None:
     )
 
     assert len(suggestions) == 1
+    assert suggestions[0].suggestedAction == "addReviewTarget"
     assert "from 1024 to 4096 bytes" in suggestions[0].reason
+
+
+def test_build_pending_suggestions_routes_large_safe_candidate_to_review() -> None:
+    suggestions = build_pending_suggestions(
+        fixed_targets=[],
+        current_entries=[
+            SnapshotEntry(
+                path="/sandbox/large-temp",
+                scope="wsl",
+                sizeBytes=4096,
+                collectedAt=iso_now(),
+                category="temp",
+                sourceRootId="/sandbox",
+                suggestedAction="addFixedTarget",
+            )
+        ],
+        previous_state=None,
+        learning_config=LearningConfig(
+            safetyPolicy={"requireManualConfirmAboveBytes": 1024}
+        ),
+        missing_counts={},
+    )
+
+    assert len(suggestions) == 1
+    assert suggestions[0].suggestedAction == "addReviewTarget"
+    assert "size exceeds manual review threshold" in suggestions[0].reason
 
 
 def test_build_pending_suggestions_reports_stale_age_context() -> None:
@@ -196,10 +227,10 @@ def test_build_pending_suggestions_reports_stale_age_context() -> None:
         fixed_targets=[FixedTarget(id="gone", path="/sandbox/gone")],
         current_entries=[],
         previous_state=SnapshotState(
-            collectedAt="2026-04-21T00:00:00+00:00",
+            collectedAt=iso_days_ago(1),
             entries=[],
             missingCounts={"gone": 1},
-            lastSeenAt={"gone": "2026-04-15T00:00:00+00:00"},
+            lastSeenAt={"gone": iso_days_ago(4)},
         ),
         learning_config=LearningConfig(
             stalePolicy={"missingCountThreshold": 2, "lastSeenAgeDays": 3, "suggestOnly": True}

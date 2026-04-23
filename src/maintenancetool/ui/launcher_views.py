@@ -72,7 +72,7 @@ def render_status_dashboard(
     console.print(f"- config_dir: {config_path}")
     console.print(f"- state_dir: {state_path}")
     console.print(f"- report_dir: {report_dir}")
-    console.print(f"- quarantine_dir: {quarantine_dir}")
+    console.print(f"- staged_dir: {quarantine_dir}")
     if config_summary is not None:
         console.print("config")
         console.print(f"- profile: {config_summary['profile']}")
@@ -114,6 +114,9 @@ def render_analyze_result(console: Console, *, result, fixed_targets, discover_c
         console.print(f"- default_excludes: {', '.join(result.excluded_names[:8])}")
     console.print(f"- snapshot_entries: {len(result.entries)}")
     console.print(f"- pending_suggestions: {len(result.suggestions)}")
+    console.print(f"- fixed_targets: {len(result.configs['fixedTargets'])}")
+    console.print(f"- review_targets: {len(result.configs['reviewTargets'])}")
+    console.print(f"- deny_rules: {len(result.configs['denyRules'])}")
     console.print(f"- snapshot_path: {result.snapshot_path}")
     console.print(f"- pending_path: {result.pending_path}")
     if result.discover_mode == "full" and result.discover_roots:
@@ -149,7 +152,7 @@ def render_cleanup_plan_summary(console: Console, *, title: str, result) -> None
         console.print("candidates")
         for item in result.plan.items[:8]:
             console.print(
-                f"- {item.path} | action={item.action} | risk={item.riskLevel} | allowed={'yes' if item.allowed else 'no'}"
+                f"- {item.path} | list={item.listKind} | action={item.action} | risk={item.riskLevel} | allowed={'yes' if item.allowed else 'no'}"
             )
 
 def build_update_panel(update_status: UpdateStatus) -> str:
@@ -184,8 +187,7 @@ def _build_recent_actions(*, state_path: Path, report_dir: Path) -> list[str]:
         ("pending suggestions", state_path / "pending.json"),
         ("learning decisions", state_path / "learningDecisions.json"),
         ("dry-run report", report_dir / "cleanup-plan-dry-run.json"),
-        ("delete execution", report_dir / "cleanup-execution-delete.json"),
-        ("quarantine execution", report_dir / "cleanup-execution-quarantine.json"),
+        ("stage execution", report_dir / "stage-execution.json"),
         ("restore execution", report_dir / "restore-execution.json"),
     ]
     events: list[tuple[float, str]] = []

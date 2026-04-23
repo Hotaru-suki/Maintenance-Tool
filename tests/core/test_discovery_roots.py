@@ -62,3 +62,32 @@ def test_resolve_discover_roots_falls_back_when_config_has_no_roots(monkeypatch,
 
     assert roots
     assert any("AppData" in root for _scope, root in roots)
+
+
+def test_resolve_discover_roots_includes_fixed_drives_and_target_parents(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "maintenancetool.core.discovery_roots._list_windows_fixed_drive_roots",
+        lambda: ["C:\\", "D:\\", "E:\\"],
+    )
+    write_json(
+        tmp_path / "fixedTargets.json",
+        [
+            {
+                "id": "known",
+                "path": "F:\\Vendor\\Cache",
+                "scopeHint": "windows",
+            }
+        ],
+    )
+    write_json(tmp_path / "reviewTargets.json", [])
+    write_json(tmp_path / "denyRules.json", [])
+    write_json(tmp_path / "discover.config.json", {"pathOverrides": []})
+    write_json(tmp_path / "learning.config.json", {"newItemPolicy": {"minBytes": 1, "promoteNewPaths": True}})
+
+    configs = load_all_configs(tmp_path)
+    roots = resolve_discover_roots(configs["fixedTargets"], configs["discover"])
+
+    assert ("windows", "C:") in roots
+    assert ("windows", "D:") in roots
+    assert ("windows", "E:") in roots
+    assert ("windows", "F:\\Vendor") in roots

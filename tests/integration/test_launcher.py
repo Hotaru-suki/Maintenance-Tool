@@ -12,7 +12,7 @@ def test_filter_launcher_commands_narrows_results() -> None:
 
     names = [command.name for command in matches]
     assert "/dryrun" in names
-    assert "/delete-safe" in names
+    assert "/stage" in names
     assert "/advanced-dryrun" not in names
 
 
@@ -130,7 +130,7 @@ def test_launcher_analyze_fixed_scans_only_fixed_targets(runtime_workspace) -> N
     assert "- discover_root_source: fixed-only" in result.stdout
 
 
-def test_launcher_analyze_review_dryrun_delete_chain(runtime_workspace) -> None:
+def test_launcher_analyze_review_dryrun_stage_chain(runtime_workspace) -> None:
     sandbox = runtime_workspace.root / "sandbox"
     cache_root = sandbox / "cache"
     extra_root = sandbox / "orphan-cache"
@@ -166,15 +166,15 @@ def test_launcher_analyze_review_dryrun_delete_chain(runtime_workspace) -> None:
         app,
         runtime_workspace,
         "launcher",
-        input_text="/analyze\ny\na\nn\n/dryrun\n/delete-safe\ny\n/exit\n",
+        input_text="/analyze\ny\na\nn\n/dryrun\n/stage\ny\n/exit\n",
     )
 
     assert result.exit_code == 0
     assert "pending_suggestions: 1" in result.stdout
     assert "Accepted" in result.stdout
     assert "dry-run preview" in result.stdout
-    assert "delete safe execution" in result.stdout
-    assert "applied_items: 2" in result.stdout
+    assert "stage safe execution" in result.stdout
+    assert "applied_items: 1" in result.stdout
     assert not (cache_root / "a.bin").exists()
-    assert not (extra_root / "b.bin").exists()
-    assert (runtime_workspace.report_dir / "cleanup-execution-delete.json").exists()
+    assert (extra_root / "b.bin").exists()
+    assert (runtime_workspace.report_dir / "stage-execution.json").exists()

@@ -33,8 +33,23 @@ def _read_json(path: Path) -> Any:
     return json.loads(raw)
 
 
+def _read_json_optional_array(path: Path) -> Any:
+    if not path.exists():
+        return []
+    return _read_json(path)
+
+
 def load_fixed_targets(path: Path) -> list[FixedTarget]:
     raw = _read_json(path)
+    if not isinstance(raw, list):
+        raise ValueError(f"{path.name} must be a JSON array")
+    targets = FIXED_TARGETS_ADAPTER.validate_python(_normalize_fixed_targets(raw))
+    _validate_unique_ids_and_paths(targets, path.name)
+    return targets
+
+
+def load_optional_fixed_targets(path: Path) -> list[FixedTarget]:
+    raw = _read_json_optional_array(path)
     if not isinstance(raw, list):
         raise ValueError(f"{path.name} must be a JSON array")
     targets = FIXED_TARGETS_ADAPTER.validate_python(_normalize_fixed_targets(raw))
@@ -67,12 +82,14 @@ def load_learning_config(path: Path) -> LearningConfig:
 
 def load_all_configs(config_dir: Path) -> dict[str, Any]:
     fixed_targets = load_fixed_targets(config_dir / "fixedTargets.json")
+    review_targets = load_optional_fixed_targets(config_dir / "reviewTargets.json")
     deny_rules = load_deny_rules(config_dir / "denyRules.json")
     discover = load_discover_config(config_dir / "discover.config.json")
     learning = load_learning_config(config_dir / "learning.config.json")
 
     return {
         "fixedTargets": fixed_targets,
+        "reviewTargets": review_targets,
         "denyRules": deny_rules,
         "discover": discover,
         "learning": learning,

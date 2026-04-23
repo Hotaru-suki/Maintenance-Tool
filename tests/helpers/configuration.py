@@ -31,12 +31,14 @@ def write_standard_config(
     config_dir: Path,
     *,
     fixed_targets: list[dict[str, Any]],
+    review_targets: list[dict[str, Any]] | None = None,
     deny_rules: list[dict[str, Any]] | None = None,
     discover: dict[str, Any] | None = None,
     learning: dict[str, Any] | None = None,
 ) -> None:
     config_dir.mkdir(parents=True, exist_ok=True)
     write_json(config_dir / "fixedTargets.json", fixed_targets)
+    write_json(config_dir / "reviewTargets.json", review_targets or [])
     write_json(config_dir / "denyRules.json", deny_rules or [])
     write_json(config_dir / "discover.config.json", _merge_dict(DEFAULT_DISCOVER_CONFIG, discover or {}))
     write_json(config_dir / "learning.config.json", _merge_dict(DEFAULT_LEARNING_CONFIG, learning or {}))
@@ -46,12 +48,14 @@ def write_legacy_sandbox_config(
     config_dir: Path,
     *,
     fixed_targets: list[dict[str, Any]],
+    review_targets: list[dict[str, Any]] | None = None,
     deny_rules: list[dict[str, Any]] | None = None,
     discover: dict[str, Any] | None = None,
     learning: dict[str, Any] | None = None,
 ) -> None:
     config_dir.mkdir(parents=True, exist_ok=True)
     write_json(config_dir / "fixedTargets.json", fixed_targets)
+    write_json(config_dir / "reviewTargets.json", review_targets or [])
     write_json(config_dir / "denyRules.json", deny_rules or [])
     write_json(
         config_dir / "discover.config.json",

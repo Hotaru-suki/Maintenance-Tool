@@ -30,7 +30,7 @@ def resolve_discover_roots(
     fixed_targets: list[FixedTarget],
     discover_config: DiscoverConfig,
 ) -> list[tuple[str, str]]:
-    roots: set[tuple[str, str]] = set()
+    roots: set[tuple[str, str]] = set(default_discover_roots())
     for target in fixed_targets:
         if not target.enabled or target.retired:
             continue
@@ -43,9 +43,7 @@ def resolve_discover_roots(
         scope = resolve_scope(override.path, override.scopeHint)
         roots.add((scope, normalize_path(override.path, scope)))
 
-    if roots:
-        return sorted(roots)
-    return default_discover_roots()
+    return sorted(roots)
 
 
 def default_discover_roots() -> list[tuple[str, str]]:
@@ -84,7 +82,7 @@ def discover_root_summary(
     if explicit_override_count == 0 and not fixed_targets:
         source = "system-drive-fallback"
     elif explicit_override_count == 0 and fixed_targets:
-        source = "target-parent"
+        source = "system-drive-plus-target-parent"
     return {
         "discover_root_source": source,
         "discover_root_count": len(resolved_roots),

@@ -187,3 +187,60 @@ def test_analyze_suppresses_previously_rejected_learning_decision(tmp_path: Path
     pending = json.loads((state_dir / "pending.json").read_text(encoding="utf-8"))
     pending_paths = {item["path"] for item in pending["suggestions"]}
     assert str(extra_root) not in pending_paths
+
+
+def test_analyze_fixed_only_scans_review_targets(tmp_path: Path) -> None:
+    sandbox = tmp_path / "sandbox"
+    safe_root = sandbox / "safe-cache"
+    review_root = sandbox / "browser-cache"
+    safe_root.mkdir(parents=True)
+    review_root.mkdir(parents=True)
+    (safe_root / "safe.bin").write_bytes(b"a" * 16)
+    (review_root / "state.bin").write_bytes(b"b" * 32)
+
+    config_dir = tmp_path / "config"
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    write_standard_config(
+        config_dir,
+        fixed_targets=[
+            {
+                "id": "safe-root",
+                "path": str(safe_root),
+                "enabled": True,
+                "depth": 2,
+                "deleteMode": "contents",
+                "source": "manual",
+                "category": "temp",
+            }
+        ],
+        review_targets=[
+            {
+                "id": "review-root",
+                "path": str(review_root),
+                "enabled": True,
+                "depth": 2,
+                "deleteMode": "contents",
+                "source": "manual",
+                "category": "browser-cache",
+            }
+        ],
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "analyze",
+            "--config-dir",
+            str(config_dir),
+            "--state-dir",
+            str(state_dir),
+            "--fixed-only",
+        ],
+    )
+
+    assert result.exit_code == 0
+    snapshot = json.loads((state_dir / "lastSnapshot.json").read_text(encoding="utf-8"))
+    snapshot_paths = {entry["path"] for entry in snapshot["entries"]}
+    assert str(safe_root) in snapshot_paths
+    assert str(review_root) in snapshot_paths

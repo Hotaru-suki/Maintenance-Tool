@@ -23,6 +23,7 @@ def run_cleanup_service(
     quarantine_dir: Path,
     mode: str,
     apply: bool,
+    include_review_targets: bool = False,
     delete_confirmation: str | None = None,
     confirmed_target_ids: set[str] | None = None,
     local_path_resolver: LocalPathResolver = resolve_local_path,
@@ -31,9 +32,11 @@ def run_cleanup_service(
     safety_policy = configs["learning"].safetyPolicy
     plan = build_cleanup_plan(
         fixed_targets=configs["fixedTargets"],
+        review_targets=configs["reviewTargets"],
         deny_rules=configs["denyRules"],
         safety_policy=safety_policy,
         mode=mode,
+        include_review_targets=include_review_targets,
         local_path_resolver=local_path_resolver,
     )
     report_path = write_cleanup_plan_report(report_dir, plan)
@@ -48,6 +51,7 @@ def run_cleanup_service(
         execution = apply_quarantine_plan(
             plan=plan,
             fixed_targets=configs["fixedTargets"],
+            review_targets=configs["reviewTargets"],
             deny_rules=configs["denyRules"],
             safety_policy=safety_policy,
             quarantine_dir=quarantine_dir,
@@ -58,6 +62,7 @@ def run_cleanup_service(
         execution = apply_delete_plan(
             plan=plan,
             fixed_targets=configs["fixedTargets"],
+            review_targets=configs["reviewTargets"],
             deny_rules=configs["denyRules"],
             safety_policy=safety_policy,
             delete_confirmation=delete_confirmation or "",

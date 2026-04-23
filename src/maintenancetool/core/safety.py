@@ -116,11 +116,11 @@ def evaluate_fixed_target(
     risk_level = decision.risk_level
     reason = decision.reason
 
-    if policy.requireManualConfirmForLearnedTargets and target.source == "learned":
+    if policy.requireManualConfirmForLearnedTargets and target.source == "learned" and decision.allow_scan:
         manual_confirm = True
         risk_level = "high" if for_delete and decision.allow_scan else ("medium" if decision.allow_scan else decision.risk_level)
         reason = "learned target requires manual confirmation"
-    if size_bytes >= policy.requireManualConfirmAboveBytes:
+    if size_bytes >= policy.requireManualConfirmAboveBytes and decision.allow_scan:
         manual_confirm = True
         risk_level = "high" if for_delete and decision.allow_scan else ("medium" if decision.allow_scan else decision.risk_level)
         reason = "target exceeds manual confirmation size threshold"

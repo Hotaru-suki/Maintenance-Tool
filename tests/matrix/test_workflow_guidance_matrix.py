@@ -54,7 +54,7 @@ def test_dryrun_next_step_cartesian_matrix_with_pruning() -> None:
             has_any_candidates=has_any_candidates,
         )
         if has_safe_candidates:
-            assert step.primary == "/delete-safe"
+            assert step.primary == "/stage"
             assert step.alternate == "/report"
         elif has_any_candidates:
             assert step.primary == "/report"
@@ -90,7 +90,7 @@ def test_advanced_dryrun_next_step_binary_matrix() -> None:
     for has_allowed_candidates in (False, True):
         step = advanced_dryrun_next_step(has_allowed_candidates=has_allowed_candidates)
         if has_allowed_candidates:
-            assert step.primary == "/advanced-quarantine"
+            assert step.primary == "/stage"
             assert step.alternate == "/report"
         else:
             assert step.primary == "/report"

@@ -26,63 +26,75 @@ from maintenancetool.models.schemas import (
 def build_cleanup_plan(
     *,
     fixed_targets: list[FixedTarget],
+    review_targets: list[FixedTarget],
     deny_rules: list[DenyRule],
     safety_policy: SafetyPolicy,
     mode: str,
+    include_review_targets: bool = False,
     local_path_resolver: LocalPathResolver = resolve_local_path,
 ) -> CleanupPlan:
     items: list[CleanupPlanItem] = []
-    for target in fixed_targets:
-        if not target.enabled or target.retired:
-            continue
-        scope = resolve_scope(target.path, target.scopeHint)
-        for_delete = mode == "delete"
-        decision = evaluate_fixed_target(
-            target,
-            deny_rules,
-            local_path_resolver=local_path_resolver,
-            safety_policy=safety_policy,
-            for_delete=for_delete,
-        )
-        local_path = local_path_resolver(target.path, scope=scope)
-        size_bytes = _measure_target(local_path, depth=target.depth)
-        requires_manual_confirm = decision.requires_manual_confirm or (
-            size_bytes >= safety_policy.requireManualConfirmAboveBytes
-        )
-        risk_level = (
-            "medium"
-            if requires_manual_confirm and decision.risk_level == "low"
-            else decision.risk_level
-        )
-        reason = (
-            "target exceeds manual confirmation size threshold"
-            if size_bytes >= safety_policy.requireManualConfirmAboveBytes
-            else decision.reason
-        )
-        allowed = (
-            decision.allow_scan and mode in {"dry-run", "quarantine"}
-        ) or (
-            decision.allow_delete and mode == "delete"
-        )
-        if for_delete and allowed:
-            requires_manual_confirm = True
-            risk_level = "high"
-            reason = "delete mode requires explicit confirmation"
-        items.append(
-            CleanupPlanItem(
-                targetId=target.id or "",
-                path=target.path,
-                scope=scope,
-                deleteMode=target.deleteMode,
-                category=target.category,
-                sizeBytes=size_bytes,
-                allowed=allowed,
-                reason=reason,
-                riskLevel=risk_level,
-                requiresManualConfirm=requires_manual_confirm,
-                action="skip" if not allowed else mode,
+    target_groups = [("safe", fixed_targets)]
+    _ = review_targets, include_review_targets
+
+    for list_kind, target_list in target_groups:
+        for target in target_list:
+            if not target.enabled or target.retired:
+                continue
+            scope = resolve_scope(target.path, target.scopeHint)
+            for_delete = mode == "delete"
+            decision = evaluate_fixed_target(
+                target,
+                deny_rules,
+                local_path_resolver=local_path_resolver,
+                safety_policy=safety_policy,
+                for_delete=for_delete,
             )
-        )
+            local_path = local_path_resolver(target.path, scope=scope)
+            size_bytes = _measure_target(local_path, depth=target.depth)
+            requires_manual_confirm = decision.requires_manual_confirm or (
+                size_bytes >= safety_policy.requireManualConfirmAboveBytes
+            )
+            risk_level = (
+                "medium"
+                if requires_manual_confirm and decision.risk_level == "low"
+                else decision.risk_level
+            )
+            reason = (
+                "target exceeds manual confirmation size threshold"
+                if size_bytes >= safety_policy.requireManualConfirmAboveBytes
+                else decision.reason
+            )
+            allowed = (
+                decision.allow_scan and mode in {"dry-run", "quarantine"}
+            ) or (
+                decision.allow_delete and mode == "delete"
+            )
+            if list_kind == "review":
+                requires_manual_confirm = True
+                risk_level = "medium" if mode != "delete" else "high"
+                if decision.reason == "allowed":
+                    reason = "review-list target requires explicit confirmation"
+            if for_delete and allowed:
+                requires_manual_confirm = True
+                risk_level = "high"
+                reason = "delete mode requires explicit confirmation"
+            items.append(
+                CleanupPlanItem(
+                    targetId=target.id or "",
+                    path=target.path,
+                    scope=scope,
+                    listKind=list_kind,
+                    deleteMode=target.deleteMode,
+                    category=target.category,
+                    sizeBytes=size_bytes,
+                    allowed=allowed,
+                    reason=reason,
+                    riskLevel=risk_level,
+                    requiresManualConfirm=requires_manual_confirm,
+                    action="skip" if not allowed else mode,
+                )
+            )
 
     return CleanupPlan(mode=mode, createdAt=_utc_now(), items=items)
 
@@ -91,6 +103,7 @@ def apply_quarantine_plan(
     *,
     plan: CleanupPlan,
     fixed_targets: list[FixedTarget],
+    review_targets: list[FixedTarget],
     deny_rules: list[DenyRule],
     safety_policy: SafetyPolicy,
     quarantine_dir: Path,
@@ -290,10 +303,75 @@ def restore_quarantine_records(
     return RestoreExecutionResult(createdAt=_utc_now(), items=results)
 
 
+def delete_quarantine_records(
+    *,
+    quarantine_dir: Path,
+    record_ids: set[str],
+) -> RestoreExecutionResult:
+    available = {record.recordId: record for record in list_quarantine_records(quarantine_dir)}
+    results: list[RestoreExecutionItem] = []
+
+    for record_id in sorted(record_ids):
+        record = available.get(record_id)
+        if record is None:
+            results.append(
+                RestoreExecutionItem(
+                    recordId=record_id,
+                    sourcePath="unknown",
+                    outcome="failed",
+                    detail="staged record not found",
+                )
+            )
+            continue
+        payload_path = _quarantine_payload_path(quarantine_dir, record.recordId)
+        if record.status != "active":
+            results.append(
+                RestoreExecutionItem(
+                    recordId=record.recordId,
+                    sourcePath=record.sourcePath,
+                    outcome="skipped",
+                    detail="record is not active",
+                    quarantinePath=str(payload_path),
+                )
+            )
+            continue
+        try:
+            if payload_path.is_dir():
+                shutil.rmtree(payload_path)
+            elif payload_path.exists():
+                payload_path.unlink()
+            _write_quarantine_record(
+                quarantine_dir=quarantine_dir,
+                record=record.model_copy(update={"status": "deleted", "deletedAt": _utc_now()}),
+            )
+            results.append(
+                RestoreExecutionItem(
+                    recordId=record.recordId,
+                    sourcePath=record.sourcePath,
+                    outcome="applied",
+                    detail="deleted staged payload",
+                    quarantinePath=str(payload_path),
+                )
+            )
+        except OSError as exc:
+            results.append(
+                RestoreExecutionItem(
+                    recordId=record.recordId,
+                    sourcePath=record.sourcePath,
+                    outcome="failed",
+                    detail=str(exc),
+                    quarantinePath=str(payload_path),
+                )
+            )
+
+    return RestoreExecutionResult(createdAt=_utc_now(), items=results)
+
+
 def apply_delete_plan(
     *,
     plan: CleanupPlan,
     fixed_targets: list[FixedTarget],
+    review_targets: list[FixedTarget],
     deny_rules: list[DenyRule],
     safety_policy: SafetyPolicy,
     delete_confirmation: str,

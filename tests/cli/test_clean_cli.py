@@ -37,7 +37,7 @@ def invoke_clean(
     return workspace, result
 
 
-def test_clean_dry_run_generates_plan_summary(tmp_path: Path) -> None:
+def test_dryrun_generates_safe_fixed_plan_summary(tmp_path: Path) -> None:
     cache_root = tmp_path / "cache"
     cache_root.mkdir()
     (cache_root / "a.bin").write_bytes(b"a" * 32)
@@ -61,9 +61,7 @@ def test_clean_dry_run_generates_plan_summary(tmp_path: Path) -> None:
         runner,
         app,
         workspace,
-        "clean",
-        "--mode",
-        "dry-run",
+        "dryrun",
         include_state=False,
     )
 
@@ -74,7 +72,46 @@ def test_clean_dry_run_generates_plan_summary(tmp_path: Path) -> None:
     assert (workspace.report_dir / "cleanup-plan-dry-run.json").exists()
 
 
-def test_clean_quarantine_apply_moves_directory_contents(tmp_path: Path) -> None:
+def test_clean_rejects_review_targets_for_cleanup(tmp_path: Path) -> None:
+    review_root = tmp_path / "browser-cache"
+    review_root.mkdir()
+    (review_root / "state.bin").write_bytes(b"a" * 32)
+
+    workspace = create_runtime_workspace(tmp_path)
+    write_standard_config(
+        workspace.config_dir,
+        fixed_targets=[],
+        review_targets=[
+            {
+                "id": "review-root",
+                "path": str(review_root),
+                "scopeHint": TEST_SCOPE_NAME,
+                "depth": 1,
+                "deleteMode": "contents",
+                "enabled": True,
+                "category": "browser-cache",
+            }
+        ],
+    )
+
+    result = invoke_runtime_command(
+        runner,
+        app,
+        workspace,
+        "clean",
+        "--mode",
+        "dry-run",
+        "--include-review",
+        include_state=False,
+    )
+
+    assert result.exit_code != 0
+    assert "review-list targets are not eligible for cleanup" in (
+        result.stdout + (result.stderr or "") + str(result.exception)
+    )
+
+
+def test_stage_moves_directory_contents(tmp_path: Path) -> None:
     cache_root = tmp_path / "cache"
     cache_root.mkdir()
     (cache_root / "a.bin").write_bytes(b"a" * 32)
@@ -100,10 +137,7 @@ def test_clean_quarantine_apply_moves_directory_contents(tmp_path: Path) -> None
         runner,
         app,
         workspace,
-        "clean",
-        "--mode",
-        "quarantine",
-        "--apply",
+        "stage",
         include_state=False,
     )
 
@@ -118,11 +152,11 @@ def test_clean_quarantine_apply_moves_directory_contents(tmp_path: Path) -> None
     manifest = (record_dirs[0] / "record.json").read_text(encoding="utf-8")
     assert '"status": "active"' in manifest
     assert (record_dirs[0] / "payload").exists()
-    assert (workspace.report_dir / "cleanup-plan-quarantine.json").exists()
-    assert (workspace.report_dir / "cleanup-execution-quarantine.json").exists()
+    assert (workspace.report_dir / "stage-plan.json").exists()
+    assert (workspace.report_dir / "stage-execution.json").exists()
 
 
-def test_clean_quarantine_apply_moves_directory_target(tmp_path: Path) -> None:
+def test_stage_moves_directory_target(tmp_path: Path) -> None:
     cache_root = tmp_path / "cache-root"
     cache_root.mkdir()
     (cache_root / "a.bin").write_bytes(b"a" * 32)
@@ -146,10 +180,7 @@ def test_clean_quarantine_apply_moves_directory_target(tmp_path: Path) -> None:
         runner,
         app,
         workspace,
-        "clean",
-        "--mode",
-        "quarantine",
-        "--apply",
+        "stage",
         include_state=False,
     )
 
@@ -159,7 +190,7 @@ def test_clean_quarantine_apply_moves_directory_target(tmp_path: Path) -> None:
     assert (workspace.quarantine_dir / "records").exists()
 
 
-def test_clean_quarantine_apply_skips_learned_target_without_extra_confirmation(tmp_path: Path) -> None:
+def test_stage_skips_learned_target_without_extra_confirmation(tmp_path: Path) -> None:
     cache_root = tmp_path / "cache-root"
     cache_root.mkdir()
     (cache_root / "a.bin").write_bytes(b"a" * 32)
@@ -186,16 +217,13 @@ def test_clean_quarantine_apply_skips_learned_target_without_extra_confirmation(
     result = runner.invoke(
         app,
         [
-            "clean",
+            "stage",
             "--config-dir",
             str(config_dir),
             "--report-dir",
             str(report_dir),
-            "--quarantine-dir",
+            "--staged-dir",
             str(quarantine_dir),
-            "--mode",
-            "quarantine",
-            "--apply",
         ],
     )
 
@@ -205,7 +233,7 @@ def test_clean_quarantine_apply_skips_learned_target_without_extra_confirmation(
     assert not quarantine_dir.exists() or list(quarantine_dir.iterdir()) == []
 
 
-def test_clean_quarantine_apply_rejects_budget_overflow(tmp_path: Path) -> None:
+def test_stage_rejects_budget_overflow(tmp_path: Path) -> None:
     root_a = tmp_path / "a"
     root_b = tmp_path / "b"
     root_a.mkdir()
@@ -228,16 +256,13 @@ def test_clean_quarantine_apply_rejects_budget_overflow(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         [
-            "clean",
+            "stage",
             "--config-dir",
             str(config_dir),
             "--report-dir",
             str(report_dir),
-            "--quarantine-dir",
+            "--staged-dir",
             str(quarantine_dir),
-            "--mode",
-            "quarantine",
-            "--apply",
         ],
     )
 
@@ -245,12 +270,10 @@ def test_clean_quarantine_apply_rejects_budget_overflow(tmp_path: Path) -> None:
     assert "maxItemsPerRun" in result.stdout or "maxItemsPerRun" in str(result.exception)
 
 
-def test_clean_delete_apply_removes_directory_contents(tmp_path: Path) -> None:
+def test_clean_delete_mode_is_disabled_for_source_targets(tmp_path: Path) -> None:
     cache_root = tmp_path / "cache"
     cache_root.mkdir()
     (cache_root / "a.bin").write_bytes(b"a" * 32)
-    (cache_root / "nested").mkdir()
-    (cache_root / "nested" / "b.bin").write_bytes(b"b" * 16)
 
     config_dir = tmp_path / "config"
     report_dir = tmp_path / "reports"
@@ -262,18 +285,12 @@ def test_clean_delete_apply_removes_directory_contents(tmp_path: Path) -> None:
                 "id": "cache-root",
                 "path": str(cache_root),
                 "scopeHint": TEST_SCOPE_NAME,
-                "depth": 2,
+                "depth": 1,
                 "deleteMode": "contents",
                 "enabled": True,
                 "source": "manual",
             }
         ],
-        learning={
-            "safetyPolicy": {
-                "requireManualConfirmForLearnedTargets": False,
-                "requireManualConfirmAboveBytes": 999999999,
-            }
-        },
     )
 
     result = runner.invoke(
@@ -284,235 +301,102 @@ def test_clean_delete_apply_removes_directory_contents(tmp_path: Path) -> None:
             str(config_dir),
             "--report-dir",
             str(report_dir),
-            "--quarantine-dir",
+            "--staged-dir",
             str(quarantine_dir),
             "--mode",
             "delete",
             "--apply",
-            "--interactive",
-            "--confirm-delete",
-            "DELETE",
         ],
-        input="y\ny\n",
     )
 
-    assert result.exit_code == 0
-    assert "applied items = 1" in result.stdout
+    assert result.exit_code != 0
+    assert "direct target delete is disabled" in (result.stdout + (result.stderr or "") + str(result.exception))
+    assert cache_root.exists()
+
+
+def test_delete_staged_removes_only_staged_payload(tmp_path: Path) -> None:
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    (cache_root / "a.bin").write_bytes(b"a" * 32)
+
+    config_dir = tmp_path / "config"
+    report_dir = tmp_path / "reports"
+    quarantine_dir = tmp_path / ".quarantine"
+    write_cleanup_config(
+        config_dir,
+        fixed_targets=[
+            {
+                "id": "cache-root",
+                "path": str(cache_root),
+                "scopeHint": TEST_SCOPE_NAME,
+                "depth": 1,
+                "deleteMode": "contents",
+                "enabled": True,
+                "source": "manual",
+            }
+        ],
+    )
+
+    stage_result = runner.invoke(
+        app,
+        [
+            "stage",
+            "--config-dir",
+            str(config_dir),
+            "--report-dir",
+            str(report_dir),
+            "--staged-dir",
+            str(quarantine_dir),
+        ],
+    )
+
+    assert stage_result.exit_code == 0
     assert cache_root.exists()
     assert list(cache_root.iterdir()) == []
-    assert (report_dir / "cleanup-plan-delete.json").exists()
-    assert (report_dir / "cleanup-execution-delete.json").exists()
+    record_dir = next(path for path in (quarantine_dir / "records").iterdir() if path.is_dir())
+    record_id = record_dir.name
+    assert (record_dir / "payload" / "a.bin").exists()
 
-
-def test_clean_delete_apply_removes_directory_target(tmp_path: Path) -> None:
-    cache_root = tmp_path / "cache-root"
-    cache_root.mkdir()
-    (cache_root / "a.bin").write_bytes(b"a" * 32)
-
-    config_dir = tmp_path / "config"
-    report_dir = tmp_path / "reports"
-    quarantine_dir = tmp_path / ".quarantine"
-    write_cleanup_config(
-        config_dir,
-        fixed_targets=[
-            {
-                "id": "cache-root",
-                "path": str(cache_root),
-                "scopeHint": TEST_SCOPE_NAME,
-                "depth": 1,
-                "deleteMode": "directory",
-                "enabled": True,
-                "source": "manual",
-            }
-        ],
-        learning={
-            "safetyPolicy": {
-                "requireManualConfirmForLearnedTargets": False,
-                "requireManualConfirmAboveBytes": 999999999,
-            }
-        },
-    )
-
-    result = runner.invoke(
+    delete_result = runner.invoke(
         app,
         [
-            "clean",
-            "--config-dir",
-            str(config_dir),
+            "delete-staged",
             "--report-dir",
             str(report_dir),
-            "--quarantine-dir",
+            "--staged-dir",
             str(quarantine_dir),
-            "--mode",
-            "delete",
-            "--apply",
-            "--interactive",
+            "--record-id",
+            record_id,
             "--confirm-delete",
-            "DELETE",
-        ],
-        input="y\ny\n",
-    )
-
-    assert result.exit_code == 0
-    assert "applied items = 1" in result.stdout
-    assert not cache_root.exists()
-
-
-def test_clean_delete_apply_requires_confirmation_token(tmp_path: Path) -> None:
-    cache_root = tmp_path / "cache"
-    cache_root.mkdir()
-    (cache_root / "a.bin").write_bytes(b"a" * 32)
-
-    config_dir = tmp_path / "config"
-    report_dir = tmp_path / "reports"
-    quarantine_dir = tmp_path / ".quarantine"
-    write_cleanup_config(
-        config_dir,
-        fixed_targets=[
-            {
-                "id": "cache-root",
-                "path": str(cache_root),
-                "scopeHint": TEST_SCOPE_NAME,
-                "depth": 1,
-                "deleteMode": "contents",
-                "enabled": True,
-                "source": "manual",
-            }
-        ],
-        learning={
-            "safetyPolicy": {
-                "requireManualConfirmForLearnedTargets": False,
-                "requireManualConfirmAboveBytes": 999999999,
-            }
-        },
-    )
-
-    result = runner.invoke(
-        app,
-        [
-            "clean",
-            "--config-dir",
-            str(config_dir),
-            "--report-dir",
-            str(report_dir),
-            "--quarantine-dir",
-            str(quarantine_dir),
-            "--mode",
-            "delete",
-            "--apply",
+            "DELETE-STAGED",
         ],
     )
 
-    assert result.exit_code != 0
+    assert delete_result.exit_code == 0
+    assert "deleted staged records = 1" in delete_result.stdout
     assert cache_root.exists()
+    assert not (record_dir / "payload").exists()
+    manifest = (record_dir / "record.json").read_text(encoding="utf-8")
+    assert '"status": "deleted"' in manifest
 
 
-def test_clean_delete_apply_requires_interactive_confirmation(tmp_path: Path) -> None:
-    cache_root = tmp_path / "cache"
-    cache_root.mkdir()
-    (cache_root / "a.bin").write_bytes(b"a" * 32)
-
-    config_dir = tmp_path / "config"
-    report_dir = tmp_path / "reports"
-    quarantine_dir = tmp_path / ".quarantine"
-    write_cleanup_config(
-        config_dir,
-        fixed_targets=[
-            {
-                "id": "cache-root",
-                "path": str(cache_root),
-                "scopeHint": TEST_SCOPE_NAME,
-                "depth": 1,
-                "deleteMode": "contents",
-                "enabled": True,
-                "source": "manual",
-            }
-        ],
-        learning={
-            "safetyPolicy": {
-                "requireManualConfirmForLearnedTargets": False,
-                "requireManualConfirmAboveBytes": 999999999,
-            }
-        },
-    )
-
+def test_delete_staged_requires_explicit_token(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         [
-            "clean",
-            "--config-dir",
-            str(config_dir),
-            "--report-dir",
-            str(report_dir),
-            "--quarantine-dir",
-            str(quarantine_dir),
-            "--mode",
-            "delete",
-            "--apply",
+            "delete-staged",
+            "--staged-dir",
+            str(tmp_path / ".quarantine"),
             "--confirm-delete",
             "DELETE",
         ],
     )
 
     assert result.exit_code != 0
-    assert cache_root.exists()
+    assert "DELETE-STAGED" in (result.stdout + (result.stderr or "") + str(result.exception))
 
 
-def test_clean_delete_apply_interactive_decline_keeps_target(tmp_path: Path) -> None:
-    cache_root = tmp_path / "cache"
-    cache_root.mkdir()
-    (cache_root / "a.bin").write_bytes(b"a" * 32)
-
-    config_dir = tmp_path / "config"
-    report_dir = tmp_path / "reports"
-    quarantine_dir = tmp_path / ".quarantine"
-    write_cleanup_config(
-        config_dir,
-        fixed_targets=[
-            {
-                "id": "cache-root",
-                "path": str(cache_root),
-                "scopeHint": TEST_SCOPE_NAME,
-                "depth": 1,
-                "deleteMode": "contents",
-                "enabled": True,
-                "source": "manual",
-            }
-        ],
-        learning={
-            "safetyPolicy": {
-                "requireManualConfirmForLearnedTargets": False,
-                "requireManualConfirmAboveBytes": 999999999,
-            }
-        },
-    )
-
-    result = runner.invoke(
-        app,
-        [
-            "clean",
-            "--config-dir",
-            str(config_dir),
-            "--report-dir",
-            str(report_dir),
-            "--quarantine-dir",
-            str(quarantine_dir),
-            "--mode",
-            "delete",
-            "--apply",
-            "--interactive",
-            "--confirm-delete",
-            "DELETE",
-        ],
-        input="n\n",
-    )
-
-    assert result.exit_code == 0
-    assert "Cleanup apply cancelled by user." in result.stdout
-    assert cache_root.exists()
-
-
-def test_restore_quarantine_command_restores_contents_and_updates_record(tmp_path: Path) -> None:
+def test_restore_command_restores_staged_contents_and_updates_record(tmp_path: Path) -> None:
     cache_root = tmp_path / "cache"
     cache_root.mkdir()
     (cache_root / "a.bin").write_bytes(b"a" * 32)
@@ -536,31 +420,28 @@ def test_restore_quarantine_command_restores_contents_and_updates_record(tmp_pat
         ],
     )
 
-    quarantine_result = runner.invoke(
+    stage_result = runner.invoke(
         app,
         [
-            "clean",
+            "stage",
             "--config-dir",
             str(config_dir),
             "--report-dir",
             str(report_dir),
-            "--quarantine-dir",
+            "--staged-dir",
             str(quarantine_dir),
-            "--mode",
-            "quarantine",
-            "--apply",
         ],
     )
 
-    assert quarantine_result.exit_code == 0
+    assert stage_result.exit_code == 0
     record_dir = next(path for path in (quarantine_dir / "records").iterdir() if path.is_dir())
     record_id = record_dir.name
 
     restore_result = runner.invoke(
         app,
         [
-            "restore-quarantine",
-            "--quarantine-dir",
+            "restore",
+            "--staged-dir",
             str(quarantine_dir),
             "--report-dir",
             str(report_dir),
@@ -578,7 +459,7 @@ def test_restore_quarantine_command_restores_contents_and_updates_record(tmp_pat
     assert (report_dir / "restore-execution.json").exists()
 
 
-def test_restore_quarantine_command_lists_active_records_without_apply(tmp_path: Path) -> None:
+def test_restore_command_lists_active_staged_records_without_apply(tmp_path: Path) -> None:
     cache_root = tmp_path / "cache"
     cache_root.mkdir()
     (cache_root / "a.bin").write_bytes(b"a" * 32)
@@ -603,24 +484,21 @@ def test_restore_quarantine_command_lists_active_records_without_apply(tmp_path:
     runner.invoke(
         app,
         [
-            "clean",
+            "stage",
             "--config-dir",
             str(config_dir),
             "--report-dir",
             str(report_dir),
-            "--quarantine-dir",
+            "--staged-dir",
             str(quarantine_dir),
-            "--mode",
-            "quarantine",
-            "--apply",
         ],
     )
 
     result = runner.invoke(
         app,
         [
-            "restore-quarantine",
-            "--quarantine-dir",
+            "restore",
+            "--staged-dir",
             str(quarantine_dir),
             "--report-dir",
             str(report_dir),
@@ -631,7 +509,7 @@ def test_restore_quarantine_command_lists_active_records_without_apply(tmp_path:
     assert "No restore executed. Use --all or --record-id." in result.stdout
 
 
-def test_restore_quarantine_command_skips_already_restored_record(tmp_path: Path) -> None:
+def test_restore_command_skips_already_restored_record(tmp_path: Path) -> None:
     cache_root = tmp_path / "cache"
     cache_root.mkdir()
     (cache_root / "a.bin").write_bytes(b"a" * 32)
@@ -656,16 +534,13 @@ def test_restore_quarantine_command_skips_already_restored_record(tmp_path: Path
     runner.invoke(
         app,
         [
-            "clean",
+            "stage",
             "--config-dir",
             str(config_dir),
             "--report-dir",
             str(report_dir),
-            "--quarantine-dir",
+            "--staged-dir",
             str(quarantine_dir),
-            "--mode",
-            "quarantine",
-            "--apply",
         ],
     )
 
@@ -674,8 +549,8 @@ def test_restore_quarantine_command_skips_already_restored_record(tmp_path: Path
     first_restore = runner.invoke(
         app,
         [
-            "restore-quarantine",
-            "--quarantine-dir",
+            "restore",
+            "--staged-dir",
             str(quarantine_dir),
             "--report-dir",
             str(report_dir),
@@ -688,8 +563,8 @@ def test_restore_quarantine_command_skips_already_restored_record(tmp_path: Path
     second_restore = runner.invoke(
         app,
         [
-            "restore-quarantine",
-            "--quarantine-dir",
+            "restore",
+            "--staged-dir",
             str(quarantine_dir),
             "--report-dir",
             str(report_dir),

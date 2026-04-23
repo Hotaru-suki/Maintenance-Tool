@@ -31,7 +31,7 @@ from maintenancetool.ui.launcher_views import (
     render_status_dashboard,
     render_welcome,
 )
-from maintenancetool.ui.review_flow import run_review_pending_interaction
+from maintenancetool.ui.review_flow import run_review_pending_interaction, run_review_promotion_interaction
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,16 +116,16 @@ def build_launcher_commands() -> list[LauncherCommand]:
         LauncherCommand("/analyze", "Scan drives and find cleanup candidates", _handle_analyze, aliases=("/a",)),
         LauncherCommand("/analyze-fixed", "Scan fixed targets only", _handle_analyze_fixed, aliases=("/af",)),
         LauncherCommand("/review", "Accept or reject learned candidates", _handle_review, aliases=("/r",)),
+        LauncherCommand("/promote-review", "Promote review-list targets to fixed targets", _handle_promote_review, aliases=("/pr",)),
         LauncherCommand("/dryrun", "Preview what can be cleaned", _handle_dryrun, aliases=("/d",)),
-        LauncherCommand("/delete-safe", "Delete low-risk allowed items", _handle_delete_safe, aliases=("/ds",)),
-        LauncherCommand("/restore", "Restore from quarantine", _handle_restore, aliases=("/rs",)),
-        LauncherCommand("/report", "Show config, state, report, and quarantine paths", _handle_report, aliases=("/rp",)),
+        LauncherCommand("/stage", "Move safe fixed targets to recoverable staged area", _handle_stage_safe, aliases=("/st",)),
+        LauncherCommand("/restore", "Restore from staged area", _handle_restore, aliases=("/rs",)),
+        LauncherCommand("/report", "Show config, state, report, and staged paths", _handle_report, aliases=("/rp",)),
         LauncherCommand("/status", "Show current scan and learning status", _handle_status, aliases=("/s",)),
         LauncherCommand("/update", "Check for updates", _handle_check_update, aliases=("/u",)),
         LauncherCommand("/feedback", "Send feedback", _handle_feedback, aliases=("/f",)),
         LauncherCommand("/config-check", "Validate config files", _handle_config_check, aliases=("/cc",), advanced_only=True),
         LauncherCommand("/advanced-dryrun", "Preview all allowed cleanup actions", _handle_advanced_dryrun, aliases=("/ad",), advanced_only=True),
-        LauncherCommand("/advanced-quarantine", "Move selected items into quarantine", _handle_advanced_quarantine, aliases=("/aq",), advanced_only=True),
         LauncherCommand("/exit", f"Exit {PRODUCT_NAME}", _handle_exit, aliases=("/q", "/quit")),
     ]
 
@@ -337,7 +337,7 @@ def _handle_analyze(context: LauncherContext) -> bool:
     render_analyze_result(
         context.console,
         result=result,
-        fixed_targets=result.configs["fixedTargets"],
+        fixed_targets=[*result.configs["fixedTargets"], *result.configs["reviewTargets"]],
         discover_config=result.configs["discover"],
     )
     if result.suggestions:
@@ -359,7 +359,7 @@ def _handle_analyze_fixed(context: LauncherContext) -> bool:
     render_analyze_result(
         context.console,
         result=result,
-        fixed_targets=result.configs["fixedTargets"],
+        fixed_targets=[*result.configs["fixedTargets"], *result.configs["reviewTargets"]],
         discover_config=result.configs["discover"],
     )
     return True
@@ -370,6 +370,11 @@ def _handle_review(context: LauncherContext) -> bool:
     return True
 
 
+def _handle_promote_review(context: LauncherContext) -> bool:
+    run_review_promotion_interaction(context.console, config_path=context.config_path)
+    return True
+
+
 def _handle_dryrun(context: LauncherContext) -> bool:
     result = run_cleanup_service(
         config_path=context.config_path,
@@ -377,19 +382,21 @@ def _handle_dryrun(context: LauncherContext) -> bool:
         quarantine_dir=context.quarantine_dir,
         mode="dry-run",
         apply=False,
+        include_review_targets=False,
         local_path_resolver=resolve_local_path,
     )
     render_cleanup_plan_summary(context.console, title="Dry-run Preview", result=result)
     return True
 
 
-def _handle_delete_safe(context: LauncherContext) -> bool:
+def _handle_stage_safe(context: LauncherContext) -> bool:
     preview_result = run_cleanup_service(
         config_path=context.config_path,
         report_dir=context.report_dir,
         quarantine_dir=context.quarantine_dir,
         mode="dry-run",
         apply=False,
+        include_review_targets=False,
         local_path_resolver=resolve_local_path,
     )
     safe_items = [
@@ -398,31 +405,31 @@ def _handle_delete_safe(context: LauncherContext) -> bool:
     ]
     context.console.print(
         build_key_value_panel(
-            "Delete Safe",
+            "Stage Safe",
             [
-                ("safe_delete_candidates", len(safe_items)),
+                ("safe_stage_candidates", len(safe_items)),
                 ("report_path", str(preview_result.report_path)),
             ],
             border_style="green",
         )
     )
     if safe_items:
-        context.console.print("safe_delete_candidates")
+        context.console.print("safe_stage_candidates")
         for item in safe_items[:8]:
             context.console.print(
                 f"- {item.path} | bytes={item.sizeBytes} | category={item.category or '-'}"
             )
         total_bytes = sum(item.sizeBytes for item in safe_items)
         if prompt_yes_no(
-            f"Proceed with safe delete for {len(safe_items)} target(s), total {total_bytes} bytes?"
+            f"Move {len(safe_items)} safe target(s), total {total_bytes} bytes, to the recoverable staged area?"
         ):
             execution_result = run_cleanup_service(
                 config_path=context.config_path,
                 report_dir=context.report_dir,
                 quarantine_dir=context.quarantine_dir,
-                mode="delete",
+                mode="quarantine",
                 apply=True,
-                delete_confirmation="DELETE",
+                include_review_targets=False,
                 confirmed_target_ids={item.targetId for item in safe_items},
                 local_path_resolver=resolve_local_path,
             )
@@ -436,7 +443,7 @@ def _handle_delete_safe(context: LauncherContext) -> bool:
             ]
             context.console.print(
                 build_key_value_panel(
-                    "Delete Safe Execution",
+                    "Stage Safe Execution",
                     [
                         ("applied_items", len(applied_items)),
                         ("skipped_items", len(skipped_items)),
@@ -452,9 +459,9 @@ def _handle_delete_safe(context: LauncherContext) -> bool:
                 )
             )
             for item in applied_items[:8]:
-                context.console.print(f"- deleted: {item.path}")
+                context.console.print(f"- staged: {item.path}")
         else:
-            context.console.print("[yellow]safe delete cancelled[/yellow]")
+            context.console.print("[yellow]safe staging cancelled[/yellow]")
     return True
 
 
@@ -471,7 +478,7 @@ def _handle_restore(context: LauncherContext) -> bool:
             "Restore Quarantine",
             [
                 ("active_records", len(preview.records)),
-                ("quarantine_dir", str(context.quarantine_dir)),
+                ("staged_dir", str(context.quarantine_dir)),
                 ("report_dir", str(context.report_dir)),
             ],
             border_style="cyan",
@@ -496,7 +503,7 @@ def _handle_report(context: LauncherContext) -> bool:
                 ("config_dir", str(context.config_path)),
                 ("state_dir", str(context.state_path)),
                 ("report_dir", str(context.report_dir)),
-                ("quarantine_dir", str(context.quarantine_dir)),
+                ("staged_dir", str(context.quarantine_dir)),
             ],
             border_style="blue",
         )
@@ -577,6 +584,7 @@ def _handle_advanced_dryrun(context: LauncherContext) -> bool:
         quarantine_dir=context.quarantine_dir,
         mode="dry-run",
         apply=False,
+        include_review_targets=False,
         local_path_resolver=resolve_local_path,
     )
     render_cleanup_plan_summary(context.console, title="Advanced Dry-run", result=result)
@@ -590,6 +598,7 @@ def _handle_advanced_quarantine(context: LauncherContext) -> bool:
         quarantine_dir=context.quarantine_dir,
         mode="quarantine",
         apply=False,
+        include_review_targets=False,
         local_path_resolver=resolve_local_path,
     )
     render_cleanup_plan_summary(context.console, title="Advanced Quarantine Preview", result=result)

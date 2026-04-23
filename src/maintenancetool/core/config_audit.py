@@ -11,6 +11,7 @@ class ConfigFileAudit:
     name: str
     path: Path
     expected_kind: str
+    required: bool
     exists: bool
     valid_json: bool
     actual_kind: str | None = None
@@ -23,8 +24,10 @@ class ConfigFileAudit:
 class ConfigAuditSummary:
     profile: str
     fixed_targets_count: int | None
+    review_targets_count: int | None
     deny_rules_count: int | None
     enabled_fixed_targets: int | None
+    enabled_review_targets: int | None
     enabled_deny_rules: int | None
     scope_hints: list[str] = field(default_factory=list)
 
@@ -38,19 +41,22 @@ class ConfigAuditResult:
 
 def audit_config_directory(config_dir: Path) -> ConfigAuditResult:
     specs = [
-        ("fixedTargets.json", "array"),
-        ("denyRules.json", "array"),
-        ("discover.config.json", "object"),
-        ("learning.config.json", "object"),
+        ("fixedTargets.json", "array", True),
+        ("reviewTargets.json", "array", False),
+        ("denyRules.json", "array", True),
+        ("discover.config.json", "object", True),
+        ("learning.config.json", "object", True),
     ]
     audits: list[ConfigFileAudit] = []
     raw_values: dict[str, Any] = {}
 
-    for name, expected_kind in specs:
-        audit = _audit_json_file(config_dir / name, expected_kind=expected_kind)
+    for name, expected_kind, required in specs:
+        audit = _audit_json_file(config_dir / name, expected_kind=expected_kind, required=required)
         audits.append(audit)
         if audit.valid_json and not audit.errors:
             raw_values[name] = _read_json(config_dir / name)
+        elif not required and not audit.exists:
+            raw_values[name] = []
 
     return ConfigAuditResult(
         files=audits,
@@ -59,16 +65,20 @@ def audit_config_directory(config_dir: Path) -> ConfigAuditResult:
     )
 
 
-def _audit_json_file(path: Path, *, expected_kind: str) -> ConfigFileAudit:
+def _audit_json_file(path: Path, *, expected_kind: str, required: bool) -> ConfigFileAudit:
     audit = ConfigFileAudit(
         name=path.name,
         path=path,
         expected_kind=expected_kind,
+        required=required,
         exists=path.exists(),
         valid_json=False,
     )
     if not path.exists():
-        audit.errors.append("missing file")
+        if required:
+            audit.errors.append("missing file")
+        else:
+            audit.notes.append("optional file missing; defaulting to empty list")
         return audit
 
     try:
@@ -108,30 +118,33 @@ def _audit_json_file(path: Path, *, expected_kind: str) -> ConfigFileAudit:
 
 def _build_summary(raw_values: dict[str, Any]) -> ConfigAuditSummary | None:
     fixed_targets = raw_values.get("fixedTargets.json")
+    review_targets = raw_values.get("reviewTargets.json")
     deny_rules = raw_values.get("denyRules.json")
     discover_config = raw_values.get("discover.config.json")
     learning_config = raw_values.get("learning.config.json")
     if (
         not isinstance(fixed_targets, list)
+        or not isinstance(review_targets, list)
         or not isinstance(deny_rules, list)
         or not isinstance(discover_config, dict)
         or not isinstance(learning_config, dict)
     ):
         return None
 
+    enabled_review_targets = sum(1 for item in review_targets if item.get("enabled", True))
     enabled_fixed_targets = sum(1 for item in fixed_targets if item.get("enabled", True))
     enabled_deny_rules = sum(1 for item in deny_rules if item.get("enabled", True))
     scope_hints = sorted(
         {
             str(item.get("scopeHint", "auto"))
-            for item in [*fixed_targets, *deny_rules]
+            for item in [*fixed_targets, *review_targets, *deny_rules]
             if isinstance(item, dict)
         }
     )
     has_learning_defaults = bool(discover_config) and bool(learning_config)
-    if not fixed_targets and not deny_rules and has_learning_defaults:
+    if not fixed_targets and not review_targets and not deny_rules and has_learning_defaults:
         profile = "learning-driven-initial"
-    elif not fixed_targets and not deny_rules:
+    elif not fixed_targets and not review_targets and not deny_rules:
         profile = "empty-template"
     elif any(_looks_like_sandbox_path(item.get("path")) for item in fixed_targets if isinstance(item, dict)):
         profile = "sandbox-sample"
@@ -141,8 +154,10 @@ def _build_summary(raw_values: dict[str, Any]) -> ConfigAuditSummary | None:
     return ConfigAuditSummary(
         profile=profile,
         fixed_targets_count=len(fixed_targets),
+        review_targets_count=len(review_targets),
         deny_rules_count=len(deny_rules),
         enabled_fixed_targets=enabled_fixed_targets,
+        enabled_review_targets=enabled_review_targets,
         enabled_deny_rules=enabled_deny_rules,
         scope_hints=scope_hints,
     )

@@ -13,6 +13,7 @@ from maintenancetool.models.schemas import (
     QuarantineRecord,
     RestoreExecutionResult,
     SnapshotEntry,
+    FixedTarget,
 )
 
 
@@ -37,7 +38,17 @@ class ReviewPendingServiceResult:
     rejected: list[PendingSuggestion] = field(default_factory=list)
     remaining: list[PendingSuggestion] = field(default_factory=list)
     fixed_targets_path: Path | None = None
+    review_targets_path: Path | None = None
+    deny_rules_path: Path | None = None
     pending_path: Path | None = None
+
+
+@dataclass(slots=True)
+class ReviewPromotionServiceResult:
+    fixed_targets_path: Path
+    review_targets_path: Path
+    promoted: list[FixedTarget] = field(default_factory=list)
+    remaining_review_targets: list[FixedTarget] = field(default_factory=list)
 
 
 @dataclass(slots=True)
