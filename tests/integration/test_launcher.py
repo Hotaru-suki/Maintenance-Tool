@@ -13,6 +13,8 @@ def isolate_system_drive_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
         "maintenancetool.core.discovery_roots._list_windows_fixed_drive_roots",
         lambda: [],
     )
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.delenv("APPDATA", raising=False)
 
 
 def test_filter_launcher_commands_narrows_results() -> None:
