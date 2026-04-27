@@ -1,8 +1,18 @@
+import pytest
+
 from maintenancetool.cli.dev import app
 from maintenancetool.ui.launcher import build_launcher_commands, filter_launcher_commands, resolve_exact_command
 from tests.helpers.cli import runner
 from tests.helpers.configuration import write_standard_config
 from tests.helpers.runtime_workspace import invoke_runtime_command
+
+
+@pytest.fixture(autouse=True)
+def isolate_system_drive_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "maintenancetool.core.discovery_roots._list_windows_fixed_drive_roots",
+        lambda: [],
+    )
 
 
 def test_filter_launcher_commands_narrows_results() -> None:

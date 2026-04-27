@@ -1,9 +1,19 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from maintenancetool.cli.dev import app
 from tests.helpers.cli import TEST_SCOPE_NAME, runner
 from tests.helpers.configuration import write_standard_config
+
+
+@pytest.fixture(autouse=True)
+def isolate_system_drive_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "maintenancetool.core.discovery_roots._list_windows_fixed_drive_roots",
+        lambda: [],
+    )
 
 
 def test_analyze_generates_snapshot_and_pending(tmp_path: Path) -> None:
